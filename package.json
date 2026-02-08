@@ -1,0 +1,55 @@
+{
+  "name": "forge-openserv",
+  "version": "1.0.0",
+  "description": "Forge - Multi-agent synthetic financial data generation platform built on OpenServ",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "ts-node src/index.ts",
+    "start:volatility": "ts-node src/agents/volatility-predictor.ts",
+    "start:liquidation": "ts-node src/agents/liquidation-analyzer.ts",
+    "start:sentiment": "ts-node src/agents/sentiment-tracker.ts",
+    "start:pattern": "ts-node src/agents/pattern-matcher.ts",
+    "start:synthesizer": "ts-node src/agents/forge-synthesizer.ts",
+    "start:api": "ts-node src/api/server.ts",
+    "lint": "eslint src/",
+    "typecheck": "tsc --noEmit"
+  },
+  "keywords": [
+    "forge",
+    "openserv",
+    "synthetic-data",
+    "financial-data",
+    "multi-agent",
+    "mcp",
+    "x402"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "@openserv-labs/sdk": "^2.2.2",
+    "openai": "^5.0.1",
+    "axios": "^1.7.0",
+    "dotenv": "^16.4.0",
+    "express": "^4.21.0",
+    "zod": "^3.23.0",
+    "uuid": "^10.0.0",
+    "cron": "^3.1.0",
+    "mathjs": "^13.0.0"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.21",
+    "@types/node": "^22.0.0",
+    "@types/uuid": "^10.0.0",
+    "@types/cron": "^2.4.0",
+    "typescript": "^5.6.0",
+    "ts-node": "^10.9.0",
+    "@typescript-eslint/eslint-plugin": "^8.0.0",
+    "@typescript-eslint/parser": "^8.0.0",
+    "eslint": "^9.0.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
