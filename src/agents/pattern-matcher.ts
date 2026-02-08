@@ -386,7 +386,11 @@ function boxMullerRandom(): number {
 }
 
 if (require.main === module) {
-  const agent = createPatternMatcher();
-  agent.start();
-  console.log(`Pattern Matcher agent started on port ${config.ports.patternAgent}`);
+  (async () => {
+    const { run } = require('@openserv-labs/sdk');
+    const agent = createPatternMatcher();
+    const { stop } = await run(agent);
+    console.log('[Forge] Pattern Matcher agent connected via OpenServ tunnel');
+    process.on('SIGINT', async () => { await stop(); process.exit(0); });
+  })();
 }

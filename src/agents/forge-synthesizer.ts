@@ -124,7 +124,11 @@ function capWeights(
 }
 
 if (require.main === module) {
-  const agent = createForgeSynthesizer();
-  agent.start();
-  console.log(`Forge Synthesizer agent started on port ${config.ports.synthesizerAgent}`);
+  (async () => {
+    const { run } = require('@openserv-labs/sdk');
+    const agent = createForgeSynthesizer();
+    const { stop } = await run(agent);
+    console.log('[Forge] Forge Synthesizer agent connected via OpenServ tunnel');
+    process.on('SIGINT', async () => { await stop(); process.exit(0); });
+  })();
 }

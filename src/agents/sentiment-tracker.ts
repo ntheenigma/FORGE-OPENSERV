@@ -269,7 +269,11 @@ function boxMullerRandom(): number {
 }
 
 if (require.main === module) {
-  const agent = createSentimentTracker();
-  agent.start();
-  console.log(`Sentiment Tracker agent started on port ${config.ports.sentimentAgent}`);
+  (async () => {
+    const { run } = require('@openserv-labs/sdk');
+    const agent = createSentimentTracker();
+    const { stop } = await run(agent);
+    console.log('[Forge] Sentiment Tracker agent connected via OpenServ tunnel');
+    process.on('SIGINT', async () => { await stop(); process.exit(0); });
+  })();
 }

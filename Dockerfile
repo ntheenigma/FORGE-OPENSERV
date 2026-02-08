@@ -11,5 +11,5 @@ WORKDIR /app
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/node_modules ./node_modules
 COPY package.json ./
-EXPOSE 3000 7378 7379 7380 7381 7382
+# No ports exposed — agents connect outbound to OpenServ via WebSocket tunnel
 CMD ["node", "dist/index.js"]

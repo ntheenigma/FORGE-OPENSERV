@@ -6,6 +6,8 @@ export const config = {
     openaiApiKey: process.env.OPENAI_API_KEY || '',
   },
 
+  // Ports only used for standalone/local dev. In production, agents connect
+  // to OpenServ via tunnel — no ports needed.
   ports: {
     volatilityAgent: parseInt(process.env.VOLATILITY_AGENT_PORT || '7378', 10),
     liquidationAgent: parseInt(process.env.LIQUIDATION_AGENT_PORT || '7379', 10),

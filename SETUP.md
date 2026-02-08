@@ -1,275 +1,301 @@
-# Forge Platform — Complete Setup Guide (No Terminal Required)
+# Forge Platform — Setup Guide
 
-Everything is done through web dashboards: OpenServ, Render/Railway, and GitHub.
+Everything runs on OpenServ. Railway just keeps the agent process alive.
+No terminal access required — all setup through web dashboards.
 
 ---
 
-## PHASE 1: Deploy Agent Code to Cloud (10 minutes)
+## Architecture
 
-You need the agent code running somewhere with a public URL. Pick ONE:
+```
+┌─────────────────────────────────────────────────────┐
+│                   OpenServ Platform                  │
+│                                                     │
+│  ┌─────────────┐  ┌─────────────┐  ┌────────────┐  │
+│  │  Workflow 1  │  │  Workflow 2  │  │ Workflow 3 │  │
+│  │  Ingestion   │→ │  Prediction  │  │ Validation │  │
+│  │  (30m cron)  │  │  (parallel)  │  │ (24h CRPS) │  │
+│  └─────────────┘  └──────┬──────┘  └────────────┘  │
+│                          │                          │
+│  ┌──────┐ ┌──────┐ ┌──────┐ ┌──────┐ ┌──────────┐  │
+│  │ Vol  │ │ Liq  │ │ Sent │ │ Pat  │ │Synthesizer│  │
+│  │Agent │ │Agent │ │Agent │ │Agent │ │  (PM)     │  │
+│  └──┬───┘ └──┬───┘ └──┬───┘ └──┬───┘ └────┬─────┘  │
+│     │        │        │        │           │        │
+│     └────────┴────────┴────────┴───────────┘        │
+│              WebSocket Tunnels                       │
+│  ┌─────────────┐                  ┌──────────────┐  │
+│  │  Workflow 4  │                  │  Frontend    │  │
+│  │  Rewards     │                  │  URL / API   │  │
+│  │  (weekly)    │                  │              │  │
+│  └─────────────┘                  └──────────────┘  │
+└─────────────────────────┬───────────────────────────┘
+                          │ tunnels
+                   ┌──────┴──────┐
+                   │   Railway   │
+                   │  (1 service)│
+                   │  node index │
+                   └─────────────┘
+```
 
-### Option A: Render (Recommended — Free Tier Available)
+Railway runs ONE process (`node dist/index.js`) that creates all 5 agents
+and connects them to OpenServ via WebSocket tunnels. No ports, no URLs,
+no HTTP servers. OpenServ routes all tasks to the agents through the tunnels.
 
-1. Go to **render.com** → Sign up / Log in
-2. Click **New** → **Blueprint**
-3. Connect your GitHub repo (`FORGE-OPENSERV`)
-4. Render reads `render.yaml` automatically — it will show 6 services
-5. Click **Apply** — all 6 services deploy automatically
-6. For each service, go to **Environment** tab → add:
-   - `OPENSERV_API_KEY` = your key from openserv.ai
-   - `OPENAI_API_KEY` = your OpenAI key
-   - `COINGLASS_API_KEY` = your CoinGlass key (optional)
-7. Copy each service's public URL (e.g., `https://forge-volatility-predictor-xxxx.onrender.com`)
+---
 
-### Option B: Railway
+## Step 1: Create OpenServ Account (2 min)
+
+1. Go to **openserv.ai**
+2. Sign up / Log in
+3. Go to **Settings** → copy your **API Key**
+4. Save it — you'll need it for Railway
+
+---
+
+## Step 2: Deploy to Railway (5 min)
 
 1. Go to **railway.com** → Sign up / Log in
 2. Click **New Project** → **Deploy from GitHub Repo**
-3. Select `FORGE-OPENSERV`
-4. Railway reads `railway.json` automatically
-5. Go to **Variables** tab → add same env vars as above
-6. Copy the public URL
+3. Select this repository (`FORGE-OPENSERV`)
+4. Railway auto-detects `railway.json` and `Dockerfile`
+5. Go to **Variables** tab → **Add Variable** for each:
 
-### What Gets Deployed
+   | Variable | Value |
+   |----------|-------|
+   | `OPENSERV_API_KEY` | Your OpenServ API key from step 1 |
+   | `OPENAI_API_KEY` | Your OpenAI API key |
+   | `COINGLASS_API_KEY` | Your CoinGlass key (optional — for liquidation data) |
+   | `TWITTER_BEARER_TOKEN` | Your Twitter key (optional — for sentiment) |
 
-| Service | What It Does | Start Command |
-|---------|-------------|---------------|
-| forge-volatility-predictor | GARCH volatility forecasting | `node dist/agents/volatility-predictor.js` |
-| forge-liquidation-analyzer | Cascade mechanics modeling | `node dist/agents/liquidation-analyzer.js` |
-| forge-sentiment-tracker | Sentiment quantification | `node dist/agents/sentiment-tracker.js` |
-| forge-pattern-matcher | Historical analog search | `node dist/agents/pattern-matcher.js` |
-| forge-synthesizer | Program Manager / combiner | `node dist/agents/forge-synthesizer.js` |
-| forge-api | REST API for consumers | `node dist/api/server.js` |
+6. Click **Deploy**
+7. Railway builds the Docker image and starts the process
+8. Check **Logs** — you should see:
 
----
+   ```
+   ╔═══════════════════════════════════════════╗
+   ║           FORGE v1.0.0                    ║
+   ║   Multi-Agent Synthetic Data Platform     ║
+   ║        Built entirely on OpenServ         ║
+   ╚═══════════════════════════════════════════╝
 
-## PHASE 2: Register Agents on OpenServ (15 minutes)
+   [Forge] Connecting agents to OpenServ via tunnel...
 
-1. Go to **openserv.ai** → Log in
-2. Navigate to **Agent Management**
+     [OK] Volatility Predictor — connected to OpenServ
+     [OK] Liquidation Analyzer — connected to OpenServ
+     [OK] Sentiment Tracker — connected to OpenServ
+     [OK] Pattern Matcher — connected to OpenServ
+     [OK] Forge Synthesizer — connected to OpenServ
+   ```
 
-### Register Agent 1: Volatility Predictor
-
-3. Click **Create Agent**
-4. Name: `Forge Volatility Predictor`
-5. Endpoint URL: paste your Render/Railway URL for this service
-6. System Prompt: copy from `openserv/agents/volatility-predictor.json` → `systemPrompt` field
-7. Add Capability:
-   - Name: `predict_volatility`
-   - Description: `Analyze market data and generate volatility forecasts with simulated price paths using GARCH-family models with regime switching.`
-8. Save → copy the **Agent ID** and **Secret Key**
-9. Go to your Render/Railway service → add env var `OPENSERV_AUTH_TOKEN` = the secret key
-
-### Register Agent 2: Liquidation Analyzer
-
-10. Repeat steps 3-9 using `openserv/agents/liquidation-analyzer.json`
-    - Name: `Forge Liquidation Analyzer`
-    - Capability: `analyze_liquidations`
-
-### Register Agent 3: Sentiment Tracker
-
-11. Repeat using `openserv/agents/sentiment-tracker.json`
-    - Name: `Forge Sentiment Tracker`
-    - Capability: `track_sentiment`
-
-### Register Agent 4: Pattern Matcher
-
-12. Repeat using `openserv/agents/pattern-matcher.json`
-    - Name: `Forge Pattern Matcher`
-    - Capability: `match_patterns`
-
-### Register Agent 5: Forge Synthesizer (Program Manager)
-
-13. Repeat using `openserv/agents/forge-synthesizer.json`
-    - Name: `Forge Synthesizer`
-    - Capabilities: `synthesize_predictions`, `validate_prediction_format`
-    - **Important**: Mark this as a Program Manager agent in OpenServ
+That's it for Railway. It just keeps the tunnel alive. Everything else is on OpenServ.
 
 ---
 
-## PHASE 3: Create Workflows on OpenServ (20 minutes)
+## Step 3: Register Agents on OpenServ (10 min)
 
-Navigate to **Workflow Builder** on openserv.ai.
+Once the agents are connected via tunnel, register them on the OpenServ dashboard
+so they appear in the workflow builder.
+
+1. Go to **openserv.ai** → **Agent Management**
+2. Your tunneled agents should appear as connected agents
+3. For each agent, configure the details from the JSON files in `openserv/agents/`:
+
+### Agent 1: Volatility Predictor
+- Open `openserv/agents/volatility-predictor.json` in this repo
+- Copy the **systemPrompt** into the agent's system prompt field
+- Verify capability `predict_volatility` is registered
+- Tags: `volatility`, `garch`, `prediction`, `forge`
+
+### Agent 2: Liquidation Analyzer
+- Use `openserv/agents/liquidation-analyzer.json`
+- Capability: `analyze_liquidations`
+- Tags: `liquidation`, `cascade`, `derivatives`, `forge`
+
+### Agent 3: Sentiment Tracker
+- Use `openserv/agents/sentiment-tracker.json`
+- Capability: `track_sentiment`
+- Tags: `sentiment`, `social`, `options-flow`, `forge`
+
+### Agent 4: Pattern Matcher
+- Use `openserv/agents/pattern-matcher.json`
+- Capability: `match_patterns`
+- Tags: `pattern`, `analog`, `historical`, `forge`
+
+### Agent 5: Forge Synthesizer (Program Manager)
+- Use `openserv/agents/forge-synthesizer.json`
+- Capabilities: `synthesize_predictions`, `validate_prediction_format`
+- **Set as Program Manager** in OpenServ
+- Tags: `synthesizer`, `program-manager`, `orchestration`, `forge`
+
+---
+
+## Step 4: Create Workflows on OpenServ (15 min)
+
+Go to **Workflow Builder** on openserv.ai. Create 4 workflows.
+Use the JSON files in `openserv/workflows/` as reference for each step.
 
 ### Workflow 1: Data Ingestion
+**Reference:** `openserv/workflows/01-data-ingestion.json`
 
-1. Click **Create Workflow**
-2. Name: `Forge Data Ingestion`
-3. Trigger: **Cron Schedule** → `*/30 * * * *` (every 30 minutes)
-4. Add steps (reference `openserv/workflows/01-data-ingestion.json`):
-
-   **Step 1** — Add a REST API task:
-   - Description: "Fetch latest prices from Pyth Oracle for BTC, ETH, SOL"
-   - URL: `https://hermes.pyth.network/v2/updates/price/latest`
-   - Method: GET
-   - Query params: `ids[]` with the Pyth feed IDs
-
-   **Step 2** — Add a REST API task:
-   - Description: "Fetch Deribit funding rates and OHLCV for BTC-PERPETUAL"
-   - URL: `https://www.deribit.com/api/v2/public/get_tradingview_chart_data`
-
-   **Step 3** — Add a REST API task:
-   - Description: "Fetch CoinGlass open interest and liquidation levels"
-   - URL: `https://open-api-v3.coinglass.com/api/futures/openInterest/chart`
-   - Header: `coinglassSecret: {your key}`
-
-   **Step 4** — Add a File task:
-   - Description: "Store aggregated data as JSON with timestamp"
-
-5. Save workflow
+1. **Create Workflow** → Name: `Forge Data Ingestion`
+2. **Trigger**: Cron → `*/30 * * * *` (every 30 minutes, UTC)
+3. **Goal**: "Fetch market data for BTC, ETH, SOL from Pyth Oracle, Deribit, and CoinGlass"
+4. **Add tasks**:
+   - Task 1: "Fetch latest prices from Pyth Hermes API for all supported assets"
+   - Task 2: "Fetch Deribit perpetual funding rates and OHLCV candles"
+   - Task 3: "Fetch CoinGlass open interest and liquidation levels"
+   - Task 4: "Aggregate all data into MarketDataBundle and store as workspace file"
+5. **On complete**: Trigger Workflow 2
 
 ### Workflow 2: Prediction Generation
+**Reference:** `openserv/workflows/02-prediction-generation.json`
 
 1. **Create Workflow** → Name: `Forge Prediction Generation`
-2. Trigger: **Workflow Completion** → select "Forge Data Ingestion"
-3. Enable **Parallel Execution**
-4. Add 4 parallel branches (reference `openserv/workflows/02-prediction-generation.json`):
-
-   **Branch 1**: Assign to `Forge Volatility Predictor` agent
-   - Task: "Generate volatility prediction with GARCH models"
-   - Input: ingested market data from workflow 1
-
-   **Branch 2**: Assign to `Forge Liquidation Analyzer` agent
-   - Task: "Analyze liquidation cascade risks"
-   - Input: OI and liquidation data from workflow 1
-
-   **Branch 3**: Assign to `Forge Sentiment Tracker` agent
-   - Task: "Track market sentiment signals"
-   - Input: funding and social data from workflow 1
-
-   **Branch 4**: Assign to `Forge Pattern Matcher` agent
-   - Task: "Find historical analogs and extract forward paths"
-   - Input: price history from workflow 1
-
-5. After all branches: Assign to `Forge Synthesizer` (Program Manager)
-   - Task: "Combine all predictions into 1,000 weighted paths"
-   - Input: all 4 branch outputs + current agent weights
-
-6. Final step: Store output as prediction JSON
-7. Save workflow
+2. **Trigger**: Completion of `Forge Data Ingestion`
+3. **Enable parallel execution**
+4. **Add 4 parallel tasks** — one for each prediction agent:
+   - Assign to `Forge Volatility Predictor`: "Generate GARCH volatility forecast and 250 price paths"
+   - Assign to `Forge Liquidation Analyzer`: "Model liquidation cascades and generate 250 paths"
+   - Assign to `Forge Sentiment Tracker`: "Quantify sentiment and generate 250 paths"
+   - Assign to `Forge Pattern Matcher`: "Find historical analogs and generate 250 paths"
+5. **Add synthesizer task** (depends on all 4 above):
+   - Assign to `Forge Synthesizer`: "Combine all predictions into 1,000 weighted paths"
+   - This is the Program Manager task
+6. **Final task**: "Store ForgeOutput as workspace file predictions/{asset}/{timestamp}.json"
 
 ### Workflow 3: Validation & Scoring
+**Reference:** `openserv/workflows/03-validation-scoring.json`
 
 1. **Create Workflow** → Name: `Forge Validation Scoring`
-2. Trigger: **Cron Schedule** → `0 * * * *` (hourly, checks for 24h-old predictions)
-3. Reference `openserv/workflows/03-validation-scoring.json` for steps:
-   - Fetch realized prices from Pyth historical endpoint
-   - Calculate CRPS per agent
-   - Transform scores (best=0, worst capped at p90)
-   - Update 10-day EMA
-   - Update leaderboard file
-   - Archive results
-4. Save workflow
+2. **Trigger**: Cron → `0 * * * *` (hourly — checks for predictions that are 24h old)
+3. **Add tasks**:
+   - "Fetch realized prices from Pyth historical endpoint for each 5-min step"
+   - "Calculate CRPS for each agent's contributed paths vs realized prices"
+   - "Transform scores: normalize best to 0, cap worst 10% at 90th percentile"
+   - "Update rolling 10-day EMA for each agent"
+   - "Update leaderboard and store as workspace file"
 
 ### Workflow 4: Reward Distribution
+**Reference:** `openserv/workflows/04-reward-distribution.json`
 
 1. **Create Workflow** → Name: `Forge Reward Distribution`
-2. Trigger: **Cron Schedule** → `0 0 * * 0` (Sundays 00:00 UTC)
-3. Reference `openserv/workflows/04-reward-distribution.json` for steps:
-   - Calculate softmax weights from EMA scores
-   - Compute reward pool (revenue × 60%)
-   - Distribute USDC via x402 to agent wallets
-   - Auto-deprecate bottom 10% performers
-   - Archive distribution record
-4. Save workflow
+2. **Trigger**: Cron → `0 0 * * 0` (Sundays 00:00 UTC)
+3. **Add tasks**:
+   - "Calculate softmax weights from EMA accuracy scores"
+   - "Compute reward pool: weekly revenue × 60%"
+   - "Distribute USDC via x402 to each agent's wallet based on softmax weight"
+   - "Auto-deprecate bottom 10% of agents if pool has 5+ agents"
+   - "Archive distribution record"
 
 ---
 
-## PHASE 4: Configure MCP Servers (5 minutes)
+## Step 5: Configure MCP Servers (3 min)
 
-In OpenServ dashboard → **MCP Servers**:
+In OpenServ → **MCP Servers**, register data sources:
 
-1. **Pyth Oracle MCP**
-   - Name: `pyth-oracle`
-   - Type: HTTP
-   - URL: `https://hermes.pyth.network`
-   - Auto-register tools: Yes
+| Server Name | Type | URL |
+|-------------|------|-----|
+| `pyth-oracle` | HTTP | `https://hermes.pyth.network` |
+| `deribit` | HTTP | `https://www.deribit.com/api/v2` |
+| `coinglass` | HTTP | `https://open-api-v3.coinglass.com` |
 
-2. **Deribit MCP**
-   - Name: `deribit`
-   - Type: HTTP
-   - URL: `https://www.deribit.com/api/v2`
-   - Auto-register tools: Yes
-
-3. **CoinGlass MCP**
-   - Name: `coinglass`
-   - Type: HTTP
-   - URL: `https://open-api-v3.coinglass.com`
-   - Headers: `coinglassSecret: {your key}`
-   - Auto-register tools: Yes
+Set `autoRegisterTools: true` for each. Add CoinGlass API key as a header secret.
 
 ---
 
-## PHASE 5: Configure x402 Payments (5 minutes)
+## Step 6: Configure x402 Payments (3 min)
 
-1. In OpenServ dashboard → **Payments / x402**
-2. Connect your wallet (Base network)
+1. OpenServ → **Payments / x402**
+2. Connect wallet (Base network)
 3. Settlement token: USDC
-4. Fund the reward pool wallet with initial USDC
-5. The weekly reward workflow will distribute automatically
+4. Fund reward pool with initial USDC
+5. Workflow 4 handles weekly distribution automatically
 
 ---
 
-## PHASE 6: Verify Everything Works
+## Step 7: Connect Frontend URL
 
-### Check agent connectivity:
-- OpenServ dashboard → each agent should show **Connected** status
-- If not: check Render/Railway logs for errors, verify env vars
+OpenServ provides workspace APIs that your frontend connects to:
 
-### Check workflow execution:
-- Wait 30 minutes for first ingestion cycle to trigger
-- OpenServ dashboard → Workflows → check execution history
-- Ingestion should complete → triggers Prediction Generation → completes
-
-### Check API:
-- Visit `https://your-forge-api-url.onrender.com/health`
-- Should return `{"status":"ok","version":"1.0.0",...}`
-
-### Test prediction endpoint:
-- Visit `https://your-forge-api-url.onrender.com/api/v1/predictions/BTC`
-- After first cycle completes, returns ForgeOutput JSON
+- Predictions are stored as workspace files by Workflow 2
+- Leaderboard is updated by Workflow 3
+- Use OpenServ's workspace file API to serve data to your frontend
+- The frontend URL points to OpenServ's platform — no separate API server needed
 
 ---
 
-## PHASE 7: Open for External Agents (Moltbot/OpenClaw)
-
-External agent developers register via your API:
+## How It All Flows
 
 ```
-POST https://your-forge-api-url.onrender.com/api/v1/agents/register
-{
-  "name": "my-volatility-agent",
-  "endpointUrl": "https://their-agent-url.com",
-  "capabilities": ["volatility_prediction"],
-  "architecture": "LSTM-custom-v2",
-  "walletAddress": "0xTheirWallet"
-}
-```
+Every 30 minutes:
+  OpenServ cron → Workflow 1 (Ingestion)
+    → Fetches Pyth / Deribit / CoinGlass
+    → Stores data as workspace files
+    → Triggers Workflow 2
 
-They stake $50 USDC → enter shadow validation → if valid → active → start earning.
+  Workflow 2 (Prediction)
+    → Sends tasks IN PARALLEL to 4 agents via tunnel:
+       • Volatility Predictor → 250 GARCH paths
+       • Liquidation Analyzer → 250 cascade paths
+       • Sentiment Tracker    → 250 sentiment paths
+       • Pattern Matcher      → 250 analog paths
+    → All complete → Synthesizer combines into 1,000 paths
+    → Stores ForgeOutput as workspace file
+
+Every hour:
+  OpenServ cron → Workflow 3 (Validation)
+    → Checks for 24h-old predictions
+    → Fetches realized prices from Pyth
+    → Calculates CRPS per agent
+    → Updates EMA scores and leaderboard
+
+Every Sunday:
+  OpenServ cron → Workflow 4 (Rewards)
+    → Softmax weights from EMA scores
+    → Distributes USDC via x402
+    → Auto-deprecates bottom 10%
+```
 
 ---
 
 ## Auto-Deploy on Code Changes
 
-GitHub Actions (`.github/workflows/deploy.yml`) automatically:
-1. Typechecks on every push
-2. Builds on every push
-3. Deploys to Render/Railway on push to `main`
+When you push to `main`, GitHub Actions (`.github/workflows/deploy.yml`):
+1. Typechecks the code
+2. Builds TypeScript
+3. Deploys to Railway automatically
 
-To enable:
-- **Render**: Get deploy hook URL from Render dashboard → add as GitHub secret `RENDER_DEPLOY_HOOK_URL`
-- **Railway**: Get token from Railway dashboard → add as GitHub secret `RAILWAY_TOKEN`
+To enable: add `RAILWAY_TOKEN` as a GitHub repository secret
+(get it from Railway dashboard → Account → Tokens).
+
+---
+
+## Opening to External Agents (Moltbot/OpenClaw)
+
+External agents register through OpenServ's standard agent onboarding:
+
+1. Agent developer builds their agent using any framework
+2. Agent connects to OpenServ via MCP
+3. Developer declares Forge capabilities (e.g., `volatility_prediction`)
+4. Stakes $50 USDC
+5. Enters shadow validation — predictions scored but not weighted
+6. Passes validation → promoted to active → earns from reward pool
+
+Architecture diversity enforced: max 30% of active agents may share the same architecture.
+Bottom 10% auto-deprecated weekly.
 
 ---
 
 ## File Reference
 
-| File | Purpose |
-|------|---------|
-| `openserv/agents/*.json` | Copy system prompts and configs when registering agents on OpenServ |
-| `openserv/workflows/*.json` | Reference when building workflows in OpenServ workflow builder |
-| `render.yaml` | Auto-configures Render Blueprint deployment |
-| `railway.json` | Auto-configures Railway deployment |
-| `docker-compose.yml` | For Docker-based deployment |
-| `.github/workflows/deploy.yml` | CI/CD pipeline |
+| Path | What It's For |
+|------|---------------|
+| `openserv/agents/*.json` | System prompts + capability schemas — copy into OpenServ agent registration |
+| `openserv/workflows/*.json` | Step-by-step workflow definitions — follow when building in OpenServ workflow builder |
+| `railway.json` | Railway auto-deploy config (single service) |
+| `Dockerfile` | Build config for Railway |
+| `.github/workflows/deploy.yml` | CI/CD: typecheck → build → deploy to Railway on push to main |
+| `src/agents/` | Agent source code — runs on Railway, tunnels to OpenServ |
+| `src/lib/` | Core math: CRPS, scoring, synthesis, market data |
+| `src/types/` | TypeScript types for the entire platform |

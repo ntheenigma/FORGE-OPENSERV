@@ -303,9 +303,13 @@ function boxMullerRandom(): number {
   return Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2);
 }
 
-// Standalone execution
+// Standalone execution via OpenServ tunnel (no public URL needed)
 if (require.main === module) {
-  const agent = createVolatilityPredictor();
-  agent.start();
-  console.log(`Volatility Predictor agent started on port ${config.ports.volatilityAgent}`);
+  (async () => {
+    const { run } = require('@openserv-labs/sdk');
+    const agent = createVolatilityPredictor();
+    const { stop } = await run(agent);
+    console.log('[Forge] Volatility Predictor agent connected via OpenServ tunnel');
+    process.on('SIGINT', async () => { await stop(); process.exit(0); });
+  })();
 }

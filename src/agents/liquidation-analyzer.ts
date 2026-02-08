@@ -312,7 +312,11 @@ function boxMullerRandom(): number {
 }
 
 if (require.main === module) {
-  const agent = createLiquidationAnalyzer();
-  agent.start();
-  console.log(`Liquidation Analyzer agent started on port ${config.ports.liquidationAgent}`);
+  (async () => {
+    const { run } = require('@openserv-labs/sdk');
+    const agent = createLiquidationAnalyzer();
+    const { stop } = await run(agent);
+    console.log('[Forge] Liquidation Analyzer agent connected via OpenServ tunnel');
+    process.on('SIGINT', async () => { await stop(); process.exit(0); });
+  })();
 }
