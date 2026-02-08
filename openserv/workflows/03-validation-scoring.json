@@ -1,0 +1,90 @@
+{
+  "name": "Forge Validation and Scoring",
+  "description": "Runs 24 hours after each prediction. Fetches realized prices, calculates CRPS per agent, transforms scores, updates the public leaderboard.",
+  "trigger": {
+    "type": "cron",
+    "schedule": "0 * * * *",
+    "timezone": "UTC",
+    "condition": "Run for predictions that are exactly 24 hours old"
+  },
+  "goal": "Validate past predictions against realized prices using CRPS, update agent accuracy scores with 10-day EMA, and refresh the public leaderboard.",
+  "steps": [
+    {
+      "id": "step-1-fetch-realized",
+      "name": "Fetch Realized Prices",
+      "description": "Call Pyth historical endpoint to get actual prices at each 5-minute step over the 24-hour prediction horizon.",
+      "agentType": "rest-api",
+      "config": {
+        "method": "GET",
+        "url": "https://hermes.pyth.network/v2/updates/price/{timestamp}",
+        "iterate": "For each 5-minute step from prediction_timestamp to prediction_timestamp + 24h",
+        "params": {
+          "ids[]": ["{pyth_feed_id_for_asset}"]
+        }
+      },
+      "output": "realized_prices"
+    },
+    {
+      "id": "step-2-calculate-crps",
+      "name": "Calculate CRPS Per Agent",
+      "description": "Compute Continuous Ranked Probability Score for each agent's contributed paths against realized prices. CRPS = E|X-y| - 0.5*E|X-X'|.",
+      "agentType": "code-executor",
+      "dependsOn": ["step-1-fetch-realized"],
+      "input": ["realized_prices", "stored_predictions"],
+      "config": {
+        "language": "javascript",
+        "description": "For each agent's 250 paths, compute CRPS at the terminal step against the realized price. Lower CRPS = better prediction."
+      },
+      "output": "crps_results"
+    },
+    {
+      "id": "step-3-transform-scores",
+      "name": "Transform and Normalize Scores",
+      "description": "Normalize scores: best agent = 0, worst 10% capped at 90th percentile. Prevents outlier scores from distorting weights.",
+      "agentType": "code-executor",
+      "dependsOn": ["step-2-calculate-crps"],
+      "input": ["crps_results"],
+      "config": {
+        "language": "javascript",
+        "description": "Apply score transformation: shift so best=0, cap worst 10% at p90 threshold."
+      },
+      "output": "transformed_scores"
+    },
+    {
+      "id": "step-4-update-ema",
+      "name": "Update Rolling 10-Day EMA",
+      "description": "Update each agent's exponential moving average score. Alpha = 2/(10+1) = 0.1818. New EMA = alpha * score + (1-alpha) * previous_EMA.",
+      "agentType": "code-executor",
+      "dependsOn": ["step-3-transform-scores"],
+      "input": ["transformed_scores", "previous_ema_scores"],
+      "config": {
+        "language": "javascript",
+        "description": "Apply EMA update for each agent. Store updated EMAs."
+      },
+      "output": "updated_ema_scores"
+    },
+    {
+      "id": "step-5-update-leaderboard",
+      "name": "Update Public Leaderboard",
+      "description": "Rank agents by EMA score (lower = better), update leaderboard file in workspace.",
+      "agentType": "code-executor",
+      "dependsOn": ["step-4-update-ema"],
+      "input": ["updated_ema_scores"],
+      "config": {
+        "action": "Sort agents by EMA, assign ranks, upload leaderboard.json to workspace files"
+      },
+      "output": "leaderboard"
+    },
+    {
+      "id": "step-6-archive",
+      "name": "Archive Validation Results",
+      "description": "Store complete validation results for audit trail.",
+      "agentType": "code-executor",
+      "dependsOn": ["step-5-update-leaderboard"],
+      "config": {
+        "action": "Upload to workspace files as validation/{asset}/{epoch}.json"
+      },
+      "output": "archived_validation"
+    }
+  ]
+}

@@ -1,0 +1,113 @@
+{
+  "name": "Forge Prediction Generation",
+  "description": "Executes all four prediction agents in parallel, then the Forge Synthesizer combines outputs into 1,000 weighted price paths.",
+  "trigger": {
+    "type": "workflow-completion",
+    "sourceWorkflow": "01-data-ingestion"
+  },
+  "goal": "Generate synthesized price predictions for each asset by running four specialized agents in parallel and combining their outputs through accuracy-weighted synthesis.",
+  "parallelExecution": true,
+  "steps": [
+    {
+      "id": "branch-1-volatility",
+      "name": "Volatility Prediction",
+      "description": "Run Volatility Predictor agent with ingested price history, IV surface, and funding data.",
+      "agent": "Forge Volatility Predictor",
+      "capability": "predict_volatility",
+      "input": {
+        "asset": "{asset}",
+        "currentPrice": "{ingestion_result.currentPrice}",
+        "priceHistory": "{ingestion_result.priceHistory}",
+        "ohlcv": "{deribit_data.ohlcv}",
+        "atmIv": "{deribit_data.ivSurface.atmIv}",
+        "fundingRate": "{deribit_data.fundingRate}",
+        "horizonSeconds": 86400
+      },
+      "parallel": true,
+      "output": "volatility_prediction"
+    },
+    {
+      "id": "branch-2-liquidation",
+      "name": "Liquidation Analysis",
+      "description": "Run Liquidation Analyzer agent with OI, funding, and liquidation level data.",
+      "agent": "Forge Liquidation Analyzer",
+      "capability": "analyze_liquidations",
+      "input": {
+        "asset": "{asset}",
+        "currentPrice": "{ingestion_result.currentPrice}",
+        "openInterest": "{coinglass_data.openInterest}",
+        "longRatio": "{coinglass_data.longRatio}",
+        "shortRatio": "{coinglass_data.shortRatio}",
+        "fundingRate": "{deribit_data.fundingRate}",
+        "liquidationLevels": "{coinglass_data.liquidationLevels}",
+        "horizonSeconds": 86400
+      },
+      "parallel": true,
+      "output": "liquidation_prediction"
+    },
+    {
+      "id": "branch-3-sentiment",
+      "name": "Sentiment Tracking",
+      "description": "Run Sentiment Tracker agent with social data, funding history, and options flow.",
+      "agent": "Forge Sentiment Tracker",
+      "capability": "track_sentiment",
+      "input": {
+        "asset": "{asset}",
+        "currentPrice": "{ingestion_result.currentPrice}",
+        "fundingRate": "{deribit_data.fundingRate}",
+        "fundingRateHistory": "{deribit_data.fundingHistory}",
+        "horizonSeconds": 86400
+      },
+      "parallel": true,
+      "output": "sentiment_prediction"
+    },
+    {
+      "id": "branch-4-pattern",
+      "name": "Pattern Matching",
+      "description": "Run Pattern Matcher agent with extended price history and volume data.",
+      "agent": "Forge Pattern Matcher",
+      "capability": "match_patterns",
+      "input": {
+        "asset": "{asset}",
+        "currentPrice": "{ingestion_result.currentPrice}",
+        "priceHistory": "{ingestion_result.priceHistory}",
+        "ohlcv": "{deribit_data.ohlcv}",
+        "horizonSeconds": 86400
+      },
+      "parallel": true,
+      "output": "pattern_prediction"
+    },
+    {
+      "id": "step-synthesize",
+      "name": "Synthesize Predictions",
+      "description": "Program Manager agent combines all four predictions into 1,000 weighted price paths.",
+      "agent": "Forge Synthesizer",
+      "capability": "synthesize_predictions",
+      "dependsOn": ["branch-1-volatility", "branch-2-liquidation", "branch-3-sentiment", "branch-4-pattern"],
+      "input": {
+        "asset": "{asset}",
+        "currentPrice": "{ingestion_result.currentPrice}",
+        "epoch": "{current_epoch}",
+        "predictions": [
+          { "agentId": "volatility-predictor", "weight": "{weights.volatility}", "prediction": "{volatility_prediction}" },
+          { "agentId": "liquidation-analyzer", "weight": "{weights.liquidation}", "prediction": "{liquidation_prediction}" },
+          { "agentId": "sentiment-tracker", "weight": "{weights.sentiment}", "prediction": "{sentiment_prediction}" },
+          { "agentId": "pattern-matcher", "weight": "{weights.pattern}", "prediction": "{pattern_prediction}" }
+        ]
+      },
+      "output": "forge_output"
+    },
+    {
+      "id": "step-store-prediction",
+      "name": "Store Prediction Output",
+      "description": "Save the ForgeOutput JSON to workspace files for API consumers.",
+      "agentType": "code-executor",
+      "dependsOn": ["step-synthesize"],
+      "input": ["forge_output"],
+      "config": {
+        "action": "Upload to workspace files as predictions/{asset}/{timestamp}.json"
+      },
+      "output": "stored_prediction"
+    }
+  ]
+}

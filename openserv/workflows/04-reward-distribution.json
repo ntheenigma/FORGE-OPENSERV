@@ -1,0 +1,78 @@
+{
+  "name": "Forge Reward Distribution",
+  "description": "Weekly USDC distribution to agents via x402 payment rail. Runs every Sunday at 00:00 UTC.",
+  "trigger": {
+    "type": "cron",
+    "schedule": "0 0 * * 0",
+    "timezone": "UTC"
+  },
+  "goal": "Calculate agent reward shares from softmax weights, distribute USDC via x402 on Base network. Revenue split: 60% agents, 20% platform, 20% insurance.",
+  "steps": [
+    {
+      "id": "step-1-calculate-weights",
+      "name": "Calculate Softmax Weights",
+      "description": "Convert EMA accuracy scores to reward weights using softmax. w_i = exp(-score_i / T) / sum(exp(-score_j / T)). Temperature T=1.0. Lower score = higher weight.",
+      "agentType": "code-executor",
+      "input": ["updated_ema_scores", "active_agents"],
+      "config": {
+        "language": "javascript",
+        "description": "Compute softmax weights from latest EMA scores for all active agents. Cap individual weight at 40%."
+      },
+      "output": "softmax_weights"
+    },
+    {
+      "id": "step-2-calculate-pool",
+      "name": "Calculate Reward Pool",
+      "description": "Total weekly revenue × 60% = agent reward pool. Track platform (20%) and insurance (20%) shares separately.",
+      "agentType": "code-executor",
+      "dependsOn": ["step-1-calculate-weights"],
+      "input": ["weekly_revenue", "softmax_weights"],
+      "config": {
+        "language": "javascript",
+        "description": "agent_pool = revenue * 0.60. Per-agent reward = agent_pool * softmax_weight."
+      },
+      "output": "reward_allocations"
+    },
+    {
+      "id": "step-3-distribute-usdc",
+      "name": "Distribute USDC via x402",
+      "description": "Send USDC to each agent's registered wallet address on Base network via x402 payment protocol.",
+      "agentType": "code-executor",
+      "dependsOn": ["step-2-calculate-pool"],
+      "input": ["reward_allocations"],
+      "config": {
+        "description": "For each agent with reward > $0: execute x402 USDC transfer on Base to agent.walletAddress. Record txHash per distribution.",
+        "x402": {
+          "token": "USDC",
+          "network": "base",
+          "fromWallet": "{X402_WALLET_ADDRESS}"
+        }
+      },
+      "output": "distribution_result"
+    },
+    {
+      "id": "step-4-deprecation-check",
+      "name": "Auto-Deprecate Bottom Performers",
+      "description": "Identify bottom 10% of agents by EMA score and mark as deprecated. Skip if fewer than 5 active agents.",
+      "agentType": "code-executor",
+      "dependsOn": ["step-3-distribute-usdc"],
+      "input": ["updated_ema_scores", "active_agents"],
+      "config": {
+        "language": "javascript",
+        "description": "Sort agents by EMA (worst = highest). If pool >= 5 agents, deprecate bottom 10%. Update agent status to 'deprecated'."
+      },
+      "output": "deprecation_result"
+    },
+    {
+      "id": "step-5-archive-distribution",
+      "name": "Archive Distribution Record",
+      "description": "Store distribution details for transparency and audit.",
+      "agentType": "code-executor",
+      "dependsOn": ["step-4-deprecation-check"],
+      "config": {
+        "action": "Upload to workspace files as rewards/epoch-{epoch}.json"
+      },
+      "output": "archived_distribution"
+    }
+  ]
+}
