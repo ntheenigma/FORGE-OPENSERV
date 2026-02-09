@@ -50,7 +50,13 @@ export function Header() {
             <span className="text-zinc-600">Next window</span>{" "}
             <span className="font-mono text-amber-400">{nextWindow}</span>
           </div>
-          <nav className="flex items-center gap-2">
+          <nav className="flex items-center gap-1">
+            <Link
+              href="/agents"
+              className="rounded-lg px-2.5 py-1.5 text-zinc-400 transition hover:bg-white/[0.04] hover:text-white"
+            >
+              Agents
+            </Link>
             <Link
               href="/leaderboard"
               className="rounded-lg px-2.5 py-1.5 text-zinc-400 transition hover:bg-white/[0.04] hover:text-white"

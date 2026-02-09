@@ -7,6 +7,7 @@ import { analyzeVolume } from "./volume-agent";
 import { analyzeMacro } from "./macro-agent";
 import { analyzePatterns } from "./pattern-agent";
 import { analyzeSentiment } from "./sentiment-agent";
+import { callExternalAgents } from "./external-caller";
 
 export async function runAgentAnalysis(
   asset: Asset,
@@ -21,8 +22,8 @@ export async function runAgentAnalysis(
 
   const goldPrice = getLatestPrice("GOLD")?.price ?? 2650;
 
-  // Run all agents in parallel
-  const agentPromises = AGENT_CONFIGS.filter((a) => a.enabled).map(
+  // Run core agents in parallel
+  const corePromises = AGENT_CONFIGS.filter((a) => a.enabled).map(
     async (config): Promise<AgentSignal | null> => {
       try {
         switch (config.type) {
@@ -48,14 +49,24 @@ export async function runAgentAnalysis(
     }
   );
 
-  const results = await Promise.all(agentPromises);
-  const signals = results.filter((s): s is AgentSignal => s !== null);
+  // Run external agents in parallel WITH core agents
+  const [coreResults, externalSignals] = await Promise.all([
+    Promise.all(corePromises),
+    callExternalAgents(asset, snapshot),
+  ]);
+
+  const coreSignals = coreResults.filter((s): s is AgentSignal => s !== null);
+  const allSignals = [...coreSignals, ...externalSignals];
+
+  const coreCount = coreSignals.length;
+  const extCount = externalSignals.length;
+  const total = allSignals.length;
 
   console.log(
-    `[ORACLE] ${asset} agents: ${signals.length}/${AGENT_CONFIGS.length} succeeded | ` +
-    signals.map((s) => `${s.agentType}=${s.direction}(${s.confidence}%)`).join(", ")
+    `[ORACLE] ${asset}: ${coreCount} core + ${extCount} external = ${total} agents | ` +
+    allSignals.map((s) => `${s.agentType}=${s.direction}(${s.confidence}%)`).join(", ")
   );
 
-  setAgentSignals(asset, signals);
-  return signals;
+  setAgentSignals(asset, allSignals);
+  return allSignals;
 }

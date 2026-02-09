@@ -53,7 +53,8 @@ export type AgentType =
   | "volume"
   | "macro"
   | "pattern"
-  | "sentiment";
+  | "sentiment"
+  | string; // external agents use custom types
 
 export interface AgentSignal {
   agentType: AgentType;
@@ -72,6 +73,48 @@ export interface AgentConfig {
   description: string;
   weight: number; // default weight in consensus
   enabled: boolean;
+}
+
+// ── External Agent Registration ──
+
+export type ExternalAgentStatus = "active" | "probation" | "inactive" | "banned";
+
+export interface RegisteredAgent {
+  id: string;
+  name: string;
+  endpoint: string; // HTTPS URL — receives POST with market data
+  description: string;
+  ownerAddress?: string;
+  type: "core" | "external";
+  status: ExternalAgentStatus;
+  assets: Asset[]; // which assets this agent predicts
+  registeredAt: number;
+  probationWindowsRemaining: number; // 96 = 24hrs of 15-min windows
+  totalPredictions: number;
+  correctPredictions: number;
+  accuracyEma: number;
+  consecutiveFailures: number;
+  lastSeen: number | null;
+  apiKey: string; // assigned on registration, agent sends in header
+}
+
+/**
+ * POST body sent TO external agents:
+ * {
+ *   asset: "BTC" | "GOLD",
+ *   price: number,
+ *   candles: Candle[] (last 60),
+ *   orderbook: { bids, asks },
+ *   timestamp: number
+ * }
+ *
+ * External agents MUST respond with this JSON within 10 seconds:
+ */
+export interface ExternalPredictionResponse {
+  direction: Direction;
+  confidence: number; // 1-95
+  reasoning?: string;
+  indicators?: Record<string, number>;
 }
 
 // ── Consensus ──
