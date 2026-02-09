@@ -1,0 +1,54 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --oracle-gold: #D4AF37;
+  --oracle-btc: #F7931A;
+  --bg-primary: #0a0a0f;
+  --bg-card: #111118;
+  --bg-hover: #1a1a24;
+  --border: rgba(255, 255, 255, 0.06);
+}
+
+body {
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  background: var(--bg-primary);
+  color: #e4e4e7;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.08); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.15); }
+
+/* Chart container */
+.chart-container {
+  position: relative;
+  width: 100%;
+  height: 300px;
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+/* Pulse animation for live indicators */
+@keyframes live-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+.animate-live { animation: live-pulse 2s ease-in-out infinite; }
+
+/* Direction colors */
+.text-up { color: #22C55E; }
+.text-down { color: #EF4444; }
+.bg-up { background: rgba(34, 197, 94, 0.1); border-color: rgba(34, 197, 94, 0.2); }
+.bg-down { background: rgba(239, 68, 68, 0.1); border-color: rgba(239, 68, 68, 0.2); }
+
+/* Confidence bar */
+.conf-bar {
+  height: 4px;
+  border-radius: 2px;
+  background: linear-gradient(90deg, #EF4444 0%, #EAB308 50%, #22C55E 100%);
+}
