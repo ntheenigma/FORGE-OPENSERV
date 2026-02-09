@@ -1,0 +1,131 @@
+{
+  "name": "FORGE Prediction Pipeline",
+  "description": "Main 15-minute prediction cycle. Fetches data, runs 4 parallel analysts, collects, weighs, synthesizes consensus, and logs.",
+  "trigger": {
+    "type": "cron",
+    "schedule": "*/15 * * * *",
+    "timezone": "UTC"
+  },
+  "timeout_seconds": 180,
+  "steps": [
+    {
+      "id": "step_1_trigger",
+      "agent": "ClockAgent",
+      "action": "trigger_pipeline",
+      "input": {"force": false},
+      "timeout_seconds": 10,
+      "on_failure": "abort"
+    },
+    {
+      "id": "step_2_fetch_data",
+      "agent": "DataFetcher",
+      "action": "fetch_market_data",
+      "input": {"asset": "BTCUSDT"},
+      "depends_on": ["step_1_trigger"],
+      "timeout_seconds": 30,
+      "on_failure": "abort",
+      "retry": {"max_attempts": 2, "backoff_seconds": 5}
+    },
+    {
+      "id": "step_3a_candle",
+      "agent": "CandleAnalyst",
+      "action": "analyze_candles",
+      "input": {"candles": "{{step_2_fetch_data.output.candles}}"},
+      "depends_on": ["step_2_fetch_data"],
+      "timeout_seconds": 30,
+      "on_failure": "skip",
+      "parallel_group": "analysts"
+    },
+    {
+      "id": "step_3b_flow",
+      "agent": "FlowAnalyst",
+      "action": "analyze_orderbook",
+      "input": {"orderbook": "{{step_2_fetch_data.output.orderbook}}"},
+      "depends_on": ["step_2_fetch_data"],
+      "timeout_seconds": 30,
+      "on_failure": "skip",
+      "parallel_group": "analysts"
+    },
+    {
+      "id": "step_3c_momentum",
+      "agent": "MomentumAnalyst",
+      "action": "analyze_momentum",
+      "input": {"candles": "{{step_2_fetch_data.output.candles}}"},
+      "depends_on": ["step_2_fetch_data"],
+      "timeout_seconds": 30,
+      "on_failure": "skip",
+      "parallel_group": "analysts"
+    },
+    {
+      "id": "step_3d_reversion",
+      "agent": "ReversionAnalyst",
+      "action": "analyze_reversion",
+      "input": {"candles": "{{step_2_fetch_data.output.candles}}"},
+      "depends_on": ["step_2_fetch_data"],
+      "timeout_seconds": 30,
+      "on_failure": "skip",
+      "parallel_group": "analysts"
+    },
+    {
+      "id": "step_4_collect",
+      "agent": "Collector",
+      "action": "collect_predictions",
+      "input": {
+        "predictions": [
+          "{{step_3a_candle.output}}",
+          "{{step_3b_flow.output}}",
+          "{{step_3c_momentum.output}}",
+          "{{step_3d_reversion.output}}"
+        ],
+        "window_id": "{{step_1_trigger.output.window_id}}"
+      },
+      "depends_on": ["step_3a_candle", "step_3b_flow", "step_3c_momentum", "step_3d_reversion"],
+      "wait_for": "all_or_timeout",
+      "wait_timeout_seconds": 60,
+      "timeout_seconds": 15,
+      "on_failure": "abort"
+    },
+    {
+      "id": "step_5_weigh",
+      "agent": "Weigher",
+      "action": "apply_weights",
+      "input": {"predictions": "{{step_4_collect.output.predictions}}"},
+      "depends_on": ["step_4_collect"],
+      "timeout_seconds": 15,
+      "on_failure": "abort"
+    },
+    {
+      "id": "step_6_synthesize",
+      "agent": "Synthesizer",
+      "action": "synthesize_consensus",
+      "input": {
+        "weighted_predictions": "{{step_5_weigh.output.weighted_predictions}}",
+        "window_id": "{{step_1_trigger.output.window_id}}"
+      },
+      "depends_on": ["step_5_weigh"],
+      "timeout_seconds": 45,
+      "on_failure": "abort"
+    },
+    {
+      "id": "step_7_log",
+      "agent": "Logger",
+      "action": "log_prediction",
+      "input": {
+        "prediction_data": {
+          "window_id": "{{step_1_trigger.output.window_id}}",
+          "price_at_prediction": "{{step_2_fetch_data.output.pyth.price}}",
+          "data_sources": "{{step_2_fetch_data.output.sources_ok}}",
+          "individual_predictions": "{{step_4_collect.output.predictions}}",
+          "consensus": "{{step_6_synthesize.output}}"
+        }
+      },
+      "depends_on": ["step_6_synthesize"],
+      "timeout_seconds": 15,
+      "on_failure": "log_warning"
+    }
+  ],
+  "output": {
+    "source": "step_6_synthesize",
+    "fields": ["prediction", "confidence", "action", "regime", "reasoning"]
+  }
+}

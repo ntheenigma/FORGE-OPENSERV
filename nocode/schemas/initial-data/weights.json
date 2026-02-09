@@ -1,0 +1,25 @@
+{
+  "reward_pool_weekly": 100,
+  "split": {
+    "agents": 0.70,
+    "platform": 0.20,
+    "reserve": 0.10
+  },
+  "scoring": {
+    "ema_alpha": 0.10,
+    "min_accuracy_for_rewards": 0.45,
+    "flat_threshold_pct": 0.01
+  },
+  "pool": {
+    "max_agents": 20,
+    "core_agents": 13,
+    "max_external": 7,
+    "probation_windows": 96
+  },
+  "reward_weights": {
+    "accuracy": 0.40,
+    "diversity": 0.30,
+    "high_conf_success": 0.20,
+    "quality": 0.10
+  }
+}

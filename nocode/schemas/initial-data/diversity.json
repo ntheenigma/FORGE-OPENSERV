@@ -1,0 +1,6 @@
+{
+  "candle_microstructure": {"contrarian_correct": 0, "total_windows": 0, "diversity_score": 0.0},
+  "order_flow": {"contrarian_correct": 0, "total_windows": 0, "diversity_score": 0.0},
+  "momentum_trend": {"contrarian_correct": 0, "total_windows": 0, "diversity_score": 0.0},
+  "mean_reversion": {"contrarian_correct": 0, "total_windows": 0, "diversity_score": 0.0}
+}

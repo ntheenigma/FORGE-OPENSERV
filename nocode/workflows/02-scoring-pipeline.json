@@ -1,0 +1,29 @@
+{
+  "name": "FORGE Scoring Pipeline",
+  "description": "Runs 15 minutes after each prediction to score accuracy against realized price. Updates EMA scores in the file system.",
+  "trigger": {
+    "type": "cron",
+    "schedule": "7,22,37,52 * * * *",
+    "timezone": "UTC",
+    "note": "Offset by 7 minutes from prediction triggers (runs at :07, :22, :37, :52) to score the window from 15 minutes ago"
+  },
+  "timeout_seconds": 60,
+  "steps": [
+    {
+      "id": "step_1_determine_window",
+      "description": "Calculate which prediction window to score (current time - 15 minutes)",
+      "agent": "Scorer",
+      "action": "score_predictions",
+      "input": {
+        "window_id": "auto_calculate_from_15min_ago"
+      },
+      "timeout_seconds": 30,
+      "retry": {"max_attempts": 2, "backoff_seconds": 10},
+      "on_failure": "skip_with_log"
+    }
+  ],
+  "output": {
+    "source": "step_1_determine_window",
+    "fields": ["consensus_correct", "updated_scores", "price_change_pct"]
+  }
+}

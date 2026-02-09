@@ -1,0 +1,6 @@
+{
+  "candle_microstructure": 0.50,
+  "order_flow": 0.50,
+  "momentum_trend": 0.50,
+  "mean_reversion": 0.50
+}

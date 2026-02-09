@@ -1,0 +1,41 @@
+{
+  "name": "FORGE Weekly Reward Distribution",
+  "description": "Runs every Sunday at 00:00 UTC. Calculates multi-factor performance scores and distributes Forge Points to agents.",
+  "trigger": {
+    "type": "cron",
+    "schedule": "0 0 * * 0",
+    "timezone": "UTC"
+  },
+  "timeout_seconds": 120,
+  "steps": [
+    {
+      "id": "step_1_distribute",
+      "agent": "Paymaster",
+      "action": "distribute_rewards",
+      "input": {
+        "week_ending": "auto_current_sunday"
+      },
+      "timeout_seconds": 60,
+      "retry": {"max_attempts": 2, "backoff_seconds": 30},
+      "on_failure": "alert_and_retry_next_hour"
+    },
+    {
+      "id": "step_2_log",
+      "agent": "Logger",
+      "action": "log_prediction",
+      "input": {
+        "prediction_data": {
+          "type": "reward_distribution",
+          "data": "{{step_1_distribute.output}}"
+        }
+      },
+      "depends_on": ["step_1_distribute"],
+      "timeout_seconds": 15,
+      "on_failure": "log_warning"
+    }
+  ],
+  "output": {
+    "source": "step_1_distribute",
+    "fields": ["distributions", "total_distributed", "top_performer"]
+  }
+}

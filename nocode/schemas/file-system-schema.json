@@ -1,0 +1,226 @@
+{
+  "$schema": "FORGE File System Schema v1.0",
+  "description": "Defines all file paths and data structures used by FORGE agents in the OpenServ File System",
+
+  "directory_structure": {
+    "forge/": {
+      "logs/": {
+        "pattern": "YYYY-MM-DD.json",
+        "description": "Daily prediction logs, one file per UTC day",
+        "retention": "90 days",
+        "written_by": ["Logger"],
+        "read_by": ["Scorer", "Paymaster"]
+      },
+      "scores/": {
+        "accuracy.json": {
+          "description": "Per-agent accuracy EMA scores, updated after every scoring cycle",
+          "written_by": ["Scorer"],
+          "read_by": ["Weigher", "Paymaster", "Registrar"]
+        },
+        "diversity.json": {
+          "description": "Per-agent diversity/contrarian scores, updated weekly",
+          "written_by": ["Paymaster"],
+          "read_by": ["Paymaster"]
+        }
+      },
+      "config/": {
+        "weights.json": {
+          "description": "Platform configuration: reward pool, split ratios, pool limits",
+          "written_by": ["admin_manual"],
+          "read_by": ["Paymaster", "Registrar"]
+        },
+        "agent_pool.json": {
+          "description": "Registry of all active agents (core + external)",
+          "written_by": ["Registrar"],
+          "read_by": ["Registrar", "Collector"]
+        }
+      }
+    }
+  },
+
+  "file_schemas": {
+    "forge/logs/YYYY-MM-DD.json": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["window_id", "timestamp", "asset", "price_at_prediction", "individual_predictions", "consensus"],
+        "properties": {
+          "window_id": {"type": "string", "pattern": "^\\d{8}-\\d{4}$", "example": "20250115-1430"},
+          "timestamp": {"type": "string", "format": "date-time"},
+          "asset": {"type": "string", "enum": ["BTC-USD"]},
+          "price_at_prediction": {"type": "number", "example": 97015.50},
+          "data_sources": {
+            "type": "object",
+            "properties": {
+              "binance": {"type": "boolean"},
+              "pyth": {"type": "boolean"},
+              "coinbase": {"type": "boolean"}
+            }
+          },
+          "individual_predictions": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["specialization", "prediction", "confidence", "reasoning"],
+              "properties": {
+                "specialization": {"type": "string"},
+                "prediction": {"type": "string", "enum": ["UP", "DOWN"]},
+                "confidence": {"type": "number", "minimum": 0.0, "maximum": 1.0},
+                "reasoning": {"type": "string", "maxLength": 80}
+              }
+            }
+          },
+          "consensus": {
+            "type": "object",
+            "required": ["prediction", "confidence", "action", "regime"],
+            "properties": {
+              "prediction": {"type": "string", "enum": ["UP", "DOWN"]},
+              "confidence": {"type": "number", "minimum": 0.50, "maximum": 0.85},
+              "action": {"type": "string", "enum": ["no_trade", "small", "medium", "large", "full"]},
+              "position_size_pct": {"type": "number", "minimum": 0, "maximum": 60},
+              "regime": {"type": "string", "enum": ["trending", "ranging", "uncertain"]},
+              "reasoning": {"type": "string", "maxLength": 120}
+            }
+          },
+          "outcome": {
+            "type": ["object", "null"],
+            "properties": {
+              "realized_price": {"type": "number"},
+              "actual_direction": {"type": "string", "enum": ["UP", "DOWN"]},
+              "consensus_correct": {"type": "boolean"},
+              "price_change_pct": {"type": "number"},
+              "scored_at": {"type": "string", "format": "date-time"}
+            }
+          }
+        }
+      }
+    },
+
+    "forge/scores/accuracy.json": {
+      "type": "object",
+      "description": "Keys are specialization names, values are EMA accuracy scores",
+      "additionalProperties": {
+        "type": "number",
+        "minimum": 0.0,
+        "maximum": 1.0
+      },
+      "example": {
+        "candle_microstructure": 0.62,
+        "order_flow": 0.58,
+        "momentum_trend": 0.55,
+        "mean_reversion": 0.60
+      },
+      "initial_values": {
+        "candle_microstructure": 0.50,
+        "order_flow": 0.50,
+        "momentum_trend": 0.50,
+        "mean_reversion": 0.50
+      }
+    },
+
+    "forge/scores/diversity.json": {
+      "type": "object",
+      "description": "Keys are specialization names, values are diversity metrics",
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "contrarian_correct": {"type": "integer", "description": "Times agent was the sole dissenter AND correct"},
+          "total_windows": {"type": "integer"},
+          "diversity_score": {"type": "number", "minimum": 0.0, "maximum": 1.0}
+        }
+      },
+      "example": {
+        "mean_reversion": {
+          "contrarian_correct": 12,
+          "total_windows": 672,
+          "diversity_score": 0.018
+        }
+      }
+    },
+
+    "forge/config/weights.json": {
+      "type": "object",
+      "properties": {
+        "reward_pool_weekly": {"type": "number", "default": 100, "description": "Total Forge Points per week"},
+        "split": {
+          "type": "object",
+          "properties": {
+            "agents": {"type": "number", "default": 0.70},
+            "platform": {"type": "number", "default": 0.20},
+            "reserve": {"type": "number", "default": 0.10}
+          }
+        },
+        "scoring": {
+          "type": "object",
+          "properties": {
+            "ema_alpha": {"type": "number", "default": 0.10},
+            "min_accuracy_for_rewards": {"type": "number", "default": 0.45},
+            "flat_threshold_pct": {"type": "number", "default": 0.01}
+          }
+        },
+        "pool": {
+          "type": "object",
+          "properties": {
+            "max_agents": {"type": "integer", "default": 20},
+            "core_agents": {"type": "integer", "default": 13},
+            "max_external": {"type": "integer", "default": 7},
+            "probation_windows": {"type": "integer", "default": 96}
+          }
+        },
+        "reward_weights": {
+          "type": "object",
+          "properties": {
+            "accuracy": {"type": "number", "default": 0.40},
+            "diversity": {"type": "number", "default": 0.30},
+            "high_conf_success": {"type": "number", "default": 0.20},
+            "quality": {"type": "number", "default": 0.10}
+          }
+        }
+      },
+      "example": {
+        "reward_pool_weekly": 100,
+        "split": {"agents": 0.70, "platform": 0.20, "reserve": 0.10},
+        "scoring": {"ema_alpha": 0.10, "min_accuracy_for_rewards": 0.45, "flat_threshold_pct": 0.01},
+        "pool": {"max_agents": 20, "core_agents": 13, "max_external": 7, "probation_windows": 96},
+        "reward_weights": {"accuracy": 0.40, "diversity": 0.30, "high_conf_success": 0.20, "quality": 0.10}
+      }
+    },
+
+    "forge/config/agent_pool.json": {
+      "type": "object",
+      "properties": {
+        "core_agents": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "agent_id": {"type": "string"},
+              "name": {"type": "string"},
+              "specialization": {"type": "string"},
+              "status": {"type": "string", "enum": ["active"]},
+              "type": {"type": "string", "enum": ["core"]},
+              "registered_at": {"type": "string", "format": "date-time"}
+            }
+          }
+        },
+        "external_agents": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "agent_id": {"type": "string"},
+              "name": {"type": "string"},
+              "specialization": {"type": "string"},
+              "endpoint": {"type": "string", "format": "uri"},
+              "status": {"type": "string", "enum": ["probation", "active", "inactive"]},
+              "type": {"type": "string", "enum": ["external"]},
+              "weight": {"type": "number"},
+              "probation_windows_remaining": {"type": "integer"},
+              "registered_at": {"type": "string", "format": "date-time"}
+            }
+          }
+        }
+      }
+    }
+  }
+}

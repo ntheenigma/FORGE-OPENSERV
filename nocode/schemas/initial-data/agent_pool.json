@@ -1,0 +1,18 @@
+{
+  "core_agents": [
+    {"agent_id": "core-clock", "name": "ClockAgent", "specialization": "orchestration", "status": "active", "type": "core"},
+    {"agent_id": "core-data", "name": "DataFetcher", "specialization": "data_ingestion", "status": "active", "type": "core"},
+    {"agent_id": "core-candle", "name": "CandleAnalyst", "specialization": "candle_microstructure", "status": "active", "type": "core"},
+    {"agent_id": "core-flow", "name": "FlowAnalyst", "specialization": "order_flow", "status": "active", "type": "core"},
+    {"agent_id": "core-momentum", "name": "MomentumAnalyst", "specialization": "momentum_trend", "status": "active", "type": "core"},
+    {"agent_id": "core-reversion", "name": "ReversionAnalyst", "specialization": "mean_reversion", "status": "active", "type": "core"},
+    {"agent_id": "core-collector", "name": "Collector", "specialization": "validation", "status": "active", "type": "core"},
+    {"agent_id": "core-weigher", "name": "Weigher", "specialization": "weighting", "status": "active", "type": "core"},
+    {"agent_id": "core-synth", "name": "Synthesizer", "specialization": "consensus", "status": "active", "type": "core"},
+    {"agent_id": "core-scorer", "name": "Scorer", "specialization": "scoring", "status": "active", "type": "core"},
+    {"agent_id": "core-logger", "name": "Logger", "specialization": "logging", "status": "active", "type": "core"},
+    {"agent_id": "core-paymaster", "name": "Paymaster", "specialization": "economics", "status": "active", "type": "core"},
+    {"agent_id": "core-registrar", "name": "Registrar", "specialization": "management", "status": "active", "type": "core"}
+  ],
+  "external_agents": []
+}
