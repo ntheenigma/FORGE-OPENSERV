@@ -72,3 +72,61 @@ export interface PipelineResult {
   consensus: Consensus;
   timestamp: string;
 }
+
+// ── Agent Pool (Open Ensemble) ──
+
+export interface RegisteredAgent {
+  agent_id: string;
+  name: string;
+  specialization: string;
+  endpoint: string;
+  description: string;
+  owner_address?: string;
+  type: "core" | "external";
+  status: "active" | "probation" | "inactive" | "banned";
+  registered_at: string;
+  probation_windows_remaining: number;
+  total_predictions: number;
+  correct_predictions: number;
+  last_seen: string | null;
+  consecutive_failures: number;
+}
+
+export interface RewardRecord {
+  specialization: string;
+  agent_id: string;
+  accuracy_score: number;
+  diversity_score: number;
+  high_conf_success: number;
+  calibration_score: number;
+  reward_score: number;
+  share_pct: number;
+  amount: number;
+  unit: string;
+}
+
+export interface RewardDistribution {
+  week_ending: string;
+  total_windows: number;
+  reward_pool: number;
+  distributions: RewardRecord[];
+  platform_fee: number;
+  reserve: number;
+  timestamp: string;
+}
+
+export interface LeaderboardEntry {
+  rank: number;
+  agent_id: string;
+  name: string;
+  specialization: string;
+  type: "core" | "external";
+  status: string;
+  accuracy_ema: number;
+  total_predictions: number;
+  correct_predictions: number;
+  accuracy_pct: number;
+  diversity_score: number;
+  total_rewards: number;
+  streak: number;
+}
