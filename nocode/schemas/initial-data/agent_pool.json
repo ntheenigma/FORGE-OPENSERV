@@ -12,7 +12,8 @@
     {"agent_id": "core-scorer", "name": "Scorer", "specialization": "scoring", "status": "active", "type": "core"},
     {"agent_id": "core-logger", "name": "Logger", "specialization": "logging", "status": "active", "type": "core"},
     {"agent_id": "core-paymaster", "name": "Paymaster", "specialization": "economics", "status": "active", "type": "core"},
-    {"agent_id": "core-registrar", "name": "Registrar", "specialization": "management", "status": "active", "type": "core"}
+    {"agent_id": "core-registrar", "name": "Registrar", "specialization": "management", "status": "active", "type": "core"},
+    {"agent_id": "core-extcaller", "name": "ExternalCaller", "specialization": "integration", "status": "active", "type": "core"}
   ],
   "external_agents": []
 }

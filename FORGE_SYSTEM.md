@@ -2,7 +2,7 @@
 
 ## No-Code Multi-Agent Ensemble on OpenServ
 
-FORGE is a 13-agent ensemble that generates 15-minute directional Bitcoin predictions through coordinated specialization. Every agent runs inside OpenServ's Agent Builder with zero external hosting, zero SDK code, and zero infrastructure management.
+FORGE is a 14-agent ensemble that generates 15-minute directional Bitcoin predictions through coordinated specialization. Every agent runs inside OpenServ's Agent Builder with zero external hosting, zero SDK code, and zero infrastructure management. The system self-improves through continuous EMA-based weight adaptation: agents that predict accurately gain influence, and agents that don't lose it — including external agents that join the pool dynamically.
 
 ---
 
@@ -79,6 +79,106 @@ FORGE is a 13-agent ensemble that generates 15-minute directional Bitcoin predic
 
 ---
 
+## Self-Improvement Architecture
+
+FORGE has three interlocking feedback loops that make the system improve over time without any manual intervention:
+
+### Loop 1: EMA Weight Adaptation (every 15 minutes)
+
+```
+                    ┌──────────────────────────────────────────┐
+                    │                                          │
+  Prediction ──→ Logger ──→ [15 min] ──→ Scorer               │
+                                           │                   │
+                                    accuracy.json              │
+                                           │                   │
+                                        Weigher ──→ next Prediction
+                                           │
+                              ┌─────────────┘
+                              ▼
+                    Higher-accuracy agents get
+                    more influence in consensus
+```
+
+Every 15 minutes, the Scorer compares each agent's prediction against the realized Pyth price. It updates `accuracy.json` using exponential moving average:
+
+```
+new_ema = 0.10 * (correct ? 1.0 : 0.0) + 0.90 * old_ema
+```
+
+The Weigher then reads these scores and multiplies each agent's raw confidence by its accuracy EMA. The Synthesizer receives these weighted predictions, so agents that are consistently right have more influence over the final output.
+
+**Effect:** An agent with 0.65 accuracy EMA and 0.60 confidence gets `weighted_confidence = 0.39`. An agent at 0.50 accuracy with 0.60 confidence gets `weighted_confidence = 0.30`. Over time, the ensemble naturally tilts toward its best performers.
+
+### Loop 2: External Agent Integration (dynamic pool)
+
+```
+  Registrar                     ExternalCaller
+      │                              │
+      ▼                              ▼
+  agent_pool.json ─────────→ POST to each endpoint
+      │                              │
+      │                         responses
+      │                              │
+      ▼                              ▼
+  accuracy.json ◄──── Scorer ◄── Collector ◄── merged predictions
+                                     │
+                                  Weigher ──→ Synthesizer
+```
+
+External agents are merged into the **exact same** pipeline as core agents:
+
+1. **Registrar** validates and writes the agent to `agent_pool.json` with EMA = 0.50, weight = 0.10
+2. **ExternalCaller** (Agent 14) runs in parallel with the 4 core analysts. It reads `agent_pool.json`, calls each active external endpoint, and returns their predictions
+3. **Collector** receives predictions from both core analysts AND ExternalCaller, flattens them into one array, validates all identically, and tags each as `source: "core"` or `source: "external"`
+4. **Weigher** applies accuracy weights from `accuracy.json` — external agents use the same formula as core agents
+5. **Synthesizer** treats all weighted predictions uniformly in the consensus vote
+6. **Scorer** scores ALL agents (core + external) and updates ALL their EMAs
+7. **Scorer** also manages probation: after 96 windows, external agents with EMA > 0.52 get promoted (full weight), those at or below 0.52 get demoted
+
+**Key property:** External agents start with 10% influence but can grow to equal or exceed core agents if they're more accurate. There are no permanent advantages for core agents — only performance matters.
+
+### Loop 3: Diversity-Driven Reward Optimization (weekly)
+
+```
+  accuracy.json ──┐
+  diversity.json ──┤
+  logs/*.json ─────┤──→ Paymaster ──→ reward distributions
+  weights.json ────┘
+```
+
+The weekly Paymaster reward formula is:
+```
+reward_score = accuracy * 0.40 + diversity * 0.30 + high_conf_success * 0.20 + quality * 0.10
+```
+
+Diversity (30% of rewards) measures how often an agent was the sole contrarian AND correct. This creates an evolutionary pressure: agents that merely agree with consensus earn less than agents providing genuinely unique signal.
+
+Combined with the contrarian bonus in the Synthesizer (1.2x weight for high-confidence dissenters), this means the system actively selects for independent thinking rather than herd behavior.
+
+### Self-Improvement Timeline
+
+| Window | What happens |
+|--------|-------------|
+| Window 1 | All agents at 0.50 EMA, equal weight. External agents at 0.10 weight |
+| Window 10 | EMAs start diverging. Better agents gaining ~0.55, worse dropping to ~0.45 |
+| Window 96 (24h) | External agents promoted or demoted. Probation resolved |
+| Window 672 (1 week) | Paymaster distributes rewards. Diversity scores crystallize |
+| Window 2688 (4 weeks) | EMAs well-calibrated. Poor agents near 0.45 (zero rewards). Top agents near 0.65+ |
+
+### What "Self-Improving" Means in Practice
+
+The system doesn't modify agent prompts or retrain models. Instead:
+
+1. **Weight reallocation** — bad agents get drowned out, good agents amplified
+2. **Natural selection** — external agents below 0.52 get removed, creating open slots for better candidates
+3. **Diversity pressure** — reward formula prevents convergence to a single strategy
+4. **Calibration monitoring** — agents with drift > 0.15 get flagged, reducing their impact on confidence sizing
+
+This produces a system where the **ensemble output improves even if no individual agent gets smarter** — it just learns which agents to trust in which regimes.
+
+---
+
 ## Agent Specifications Table
 
 | # | Agent | Model | Role | Input | Output | Trigger |
@@ -96,6 +196,7 @@ FORGE is a 13-agent ensemble that generates 15-minute directional Bitcoin predic
 | 11 | Logger | GPT-4o-mini | Storage | Prediction cycle | {status, file_path} | After Synthesizer |
 | 12 | Paymaster | GPT-4o-mini | Economics | Weekly data | {distributions, amounts} | 0 0 * * 0 |
 | 13 | Registrar | GPT-4o-mini | Management | Agent spec | {agent_id, status, weight} | On-demand |
+| 14 | ExternalCaller | GPT-4o-mini | Integration | Market data | {external_predictions[]} | From DataFetcher |
 
 ---
 
