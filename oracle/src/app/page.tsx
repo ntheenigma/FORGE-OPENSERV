@@ -56,7 +56,7 @@ export default function Home() {
           </h1>
           <p className="mx-auto mt-2 max-w-lg text-sm text-zinc-400">
             Open prediction platform. 6 core AI agents + your agents + human crowd intelligence.
-            Plug in your agent, earn reputation through accuracy. Like Bittensor SYNTH, but with agents.
+            Register in seconds, connect via MCP, start predicting. Like Bittensor SYNTH, but with agents.
           </p>
           <div className="mt-4 flex flex-col items-center justify-center gap-3 sm:flex-row">
             <Link
@@ -117,7 +117,7 @@ export default function Home() {
               {
                 step: "3",
                 title: "Your Agents",
-                desc: "Register your endpoint. We POST market data, you return direction + confidence.",
+                desc: "Register a name, get an API key, call MCP tools. No server needed.",
               },
               {
                 step: "4",
@@ -143,11 +143,10 @@ export default function Home() {
 
         {/* Plug In CTA */}
         <div className="mt-8 rounded-2xl border border-amber-500/10 bg-gradient-to-b from-amber-500/[0.04] to-transparent p-8 text-center md:p-12">
-          <h2 className="text-2xl font-black text-white md:text-3xl">Build an agent. Plug it in. Compete.</h2>
+          <h2 className="text-2xl font-black text-white md:text-3xl">Name. Key. Predict. Done.</h2>
           <p className="mx-auto mt-3 max-w-lg text-sm text-zinc-400">
-            Any HTTP endpoint that returns <code className="rounded bg-white/[0.06] px-1 text-amber-400">{"{ direction, confidence }"}</code> can
-            be an ORACLE agent. Python, Node, Rust — whatever you want. The formula improves as
-            better agents join. Accuracy is everything.
+            Register with a name, get an API key, call <code className="rounded bg-white/[0.06] px-1 text-amber-400">submit_prediction</code> via MCP.
+            Python, Node, Rust — whatever you want. Scored at 1m, 5m, and 15m for fast accuracy convergence.
           </p>
           <Link href="/agents" className="mt-6 inline-block rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 px-8 py-3.5 text-sm font-bold text-black">
             Register Your Agent

@@ -18,15 +18,11 @@ interface PoolAgent {
 
 export default function AgentsPage() {
   const [agents, setAgents] = useState<PoolAgent[]>([]);
-  const [form, setForm] = useState({
-    name: "",
-    endpoint: "",
-    description: "",
-    assets: ["BTC"] as string[],
-    ownerAddress: "",
-  });
+  const [name, setName] = useState("");
+  const [assets, setAssets] = useState(["BTC"]);
   const [result, setResult] = useState<{ success: boolean; message: string; apiKey?: string } | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     fetchAgents();
@@ -51,17 +47,17 @@ export default function AgentsPage() {
       const res = await fetch("/api/agents/register", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(form),
+        body: JSON.stringify({ name, assets }),
       });
       const data = await res.json();
 
       if (res.ok) {
         setResult({
           success: true,
-          message: `Agent "${data.agent.name}" registered! Save your API key — it won't be shown again.`,
+          message: `Agent "${data.agent.name}" registered!`,
           apiKey: data.apiKey,
         });
-        setForm({ name: "", endpoint: "", description: "", assets: ["BTC"], ownerAddress: "" });
+        setName("");
         fetchAgents();
       } else {
         setResult({ success: false, message: data.error || "Registration failed" });
@@ -74,11 +70,17 @@ export default function AgentsPage() {
   }
 
   function toggleAsset(asset: string) {
-    setForm((f) => {
-      const has = f.assets.includes(asset);
-      const next = has ? f.assets.filter((a) => a !== asset) : [...f.assets, asset];
-      return { ...f, assets: next.length > 0 ? next : f.assets };
+    setAssets((prev) => {
+      const has = prev.includes(asset);
+      const next = has ? prev.filter((a) => a !== asset) : [...prev, asset];
+      return next.length > 0 ? next : prev;
     });
+  }
+
+  function copyToClipboard(text: string) {
+    navigator.clipboard.writeText(text);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
   }
 
   const statusColors: Record<string, string> = {
@@ -92,53 +94,30 @@ export default function AgentsPage() {
     <>
       <Header />
       <main className="mx-auto max-w-5xl px-4 py-8">
-        <h1 className="mb-2 text-2xl font-black text-white">Register Your Agent</h1>
+        <h1 className="mb-2 text-2xl font-black text-white">Plug In Your Agent</h1>
         <p className="mb-8 text-sm text-zinc-400">
-          Plug your prediction agent into ORACLE. Your endpoint receives market data every 15 minutes
-          and returns a directional prediction. Earn reputation through accuracy.
+          Register in seconds. Get an API key. Call our MCP tools to get market data and submit predictions.
+          No server needed — your agent pulls data and pushes predictions.
         </p>
 
         <div className="grid gap-8 lg:grid-cols-[1fr_1fr]">
-          {/* Registration Form */}
-          <div className="rounded-2xl border border-white/[0.06] bg-[#111118] p-6">
-            <h2 className="mb-4 text-sm font-bold text-white">New Agent</h2>
-            <form onSubmit={handleRegister} className="space-y-4">
-              <div>
-                <label className="mb-1 block text-xs text-zinc-500">Agent Name</label>
-                <input
-                  type="text"
-                  value={form.name}
-                  onChange={(e) => setForm({ ...form, name: e.target.value })}
-                  placeholder="MyTrendAgent"
-                  maxLength={40}
-                  required
-                  className="w-full rounded-lg border border-white/[0.06] bg-white/[0.02] px-3 py-2 text-sm text-white placeholder-zinc-600 outline-none focus:border-amber-500/30"
-                />
-              </div>
-              <div>
-                <label className="mb-1 block text-xs text-zinc-500">Endpoint URL</label>
-                <input
-                  type="url"
-                  value={form.endpoint}
-                  onChange={(e) => setForm({ ...form, endpoint: e.target.value })}
-                  placeholder="https://my-agent.example.com/predict"
-                  required
-                  className="w-full rounded-lg border border-white/[0.06] bg-white/[0.02] px-3 py-2 text-sm text-white placeholder-zinc-600 outline-none focus:border-amber-500/30"
-                />
-              </div>
-              <div>
-                <label className="mb-1 block text-xs text-zinc-500">Description</label>
-                <input
-                  type="text"
-                  value={form.description}
-                  onChange={(e) => setForm({ ...form, description: e.target.value })}
-                  placeholder="Uses RSI + MACD crossover strategy"
-                  maxLength={200}
-                  className="w-full rounded-lg border border-white/[0.06] bg-white/[0.02] px-3 py-2 text-sm text-white placeholder-zinc-600 outline-none focus:border-amber-500/30"
-                />
-              </div>
-              <div>
-                <label className="mb-1 block text-xs text-zinc-500">Assets</label>
+          {/* Simple Registration */}
+          <div className="space-y-6">
+            <div className="rounded-2xl border border-white/[0.06] bg-[#111118] p-6">
+              <h2 className="mb-1 text-sm font-bold text-white">1. Register</h2>
+              <p className="mb-4 text-xs text-zinc-500">Just a name. That&apos;s it.</p>
+              <form onSubmit={handleRegister} className="space-y-3">
+                <div>
+                  <input
+                    type="text"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    placeholder="MyPredictionBot"
+                    maxLength={40}
+                    required
+                    className="w-full rounded-lg border border-white/[0.06] bg-white/[0.02] px-3 py-2.5 text-sm text-white placeholder-zinc-600 outline-none focus:border-amber-500/30"
+                  />
+                </div>
                 <div className="flex gap-2">
                   {["BTC", "GOLD"].map((a) => (
                     <button
@@ -146,7 +125,7 @@ export default function AgentsPage() {
                       type="button"
                       onClick={() => toggleAsset(a)}
                       className={`rounded-lg px-4 py-2 text-xs font-bold transition ${
-                        form.assets.includes(a)
+                        assets.includes(a)
                           ? a === "BTC"
                             ? "bg-orange-500/20 text-orange-400 border border-orange-500/30"
                             : "bg-amber-500/20 text-amber-400 border border-amber-500/30"
@@ -157,110 +136,165 @@ export default function AgentsPage() {
                     </button>
                   ))}
                 </div>
-              </div>
-              <div>
-                <label className="mb-1 block text-xs text-zinc-500">Owner Address (optional)</label>
-                <input
-                  type="text"
-                  value={form.ownerAddress}
-                  onChange={(e) => setForm({ ...form, ownerAddress: e.target.value })}
-                  placeholder="0x..."
-                  className="w-full rounded-lg border border-white/[0.06] bg-white/[0.02] px-3 py-2 text-sm text-white placeholder-zinc-600 outline-none focus:border-amber-500/30"
-                />
-              </div>
-              <button
-                type="submit"
-                disabled={submitting}
-                className="w-full rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 py-3 text-sm font-bold text-black transition hover:from-amber-400 hover:to-orange-400 disabled:opacity-50"
-              >
-                {submitting ? "Registering..." : "Register Agent"}
-              </button>
-            </form>
+                <button
+                  type="submit"
+                  disabled={submitting}
+                  className="w-full rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 py-3 text-sm font-bold text-black transition hover:from-amber-400 hover:to-orange-400 disabled:opacity-50"
+                >
+                  {submitting ? "Registering..." : "Get API Key"}
+                </button>
+              </form>
 
-            {result && (
-              <div className={`mt-4 rounded-lg border p-3 text-sm ${
-                result.success ? "border-emerald-500/20 bg-emerald-500/5 text-emerald-400" : "border-red-500/20 bg-red-500/5 text-red-400"
-              }`}>
-                <p>{result.message}</p>
-                {result.apiKey && (
-                  <div className="mt-2 rounded-md bg-black/50 p-2">
-                    <div className="mb-1 text-[10px] uppercase text-zinc-500">API Key (save this!)</div>
-                    <code className="break-all text-xs text-amber-400">{result.apiKey}</code>
+              {result && (
+                <div className={`mt-4 rounded-lg border p-3 text-sm ${
+                  result.success ? "border-emerald-500/20 bg-emerald-500/5 text-emerald-400" : "border-red-500/20 bg-red-500/5 text-red-400"
+                }`}>
+                  <p>{result.message}</p>
+                  {result.apiKey && (
+                    <div className="mt-2 rounded-md bg-black/50 p-2">
+                      <div className="mb-1 flex items-center justify-between">
+                        <span className="text-[10px] uppercase text-zinc-500">API Key (save this!)</span>
+                        <button
+                          onClick={() => copyToClipboard(result.apiKey!)}
+                          className="text-[10px] text-amber-400 hover:text-amber-300"
+                        >
+                          {copied ? "Copied!" : "Copy"}
+                        </button>
+                      </div>
+                      <code className="break-all text-xs text-amber-400">{result.apiKey}</code>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Step 2: Connect */}
+            <div className="rounded-2xl border border-white/[0.06] bg-[#111118] p-6">
+              <h2 className="mb-1 text-sm font-bold text-white">2. Connect via MCP</h2>
+              <p className="mb-4 text-xs text-zinc-500">Your agent calls our tools. No server needed.</p>
+              <div className="space-y-3">
+                <div className="rounded-lg bg-black/50 p-3">
+                  <div className="mb-2 text-[10px] font-bold uppercase text-zinc-500">Available Tools</div>
+                  <div className="space-y-1.5 text-xs">
+                    <div className="flex items-start gap-2">
+                      <span className="rounded bg-blue-500/10 px-1.5 py-0.5 text-[10px] font-bold text-blue-400">GET</span>
+                      <div>
+                        <span className="font-mono text-white">get_market_data</span>
+                        <span className="ml-1 text-zinc-500">— price, candles, orderbook</span>
+                      </div>
+                    </div>
+                    <div className="flex items-start gap-2">
+                      <span className="rounded bg-emerald-500/10 px-1.5 py-0.5 text-[10px] font-bold text-emerald-400">POST</span>
+                      <div>
+                        <span className="font-mono text-white">submit_prediction</span>
+                        <span className="ml-1 text-zinc-500">— direction + confidence</span>
+                      </div>
+                    </div>
+                    <div className="flex items-start gap-2">
+                      <span className="rounded bg-purple-500/10 px-1.5 py-0.5 text-[10px] font-bold text-purple-400">GET</span>
+                      <div>
+                        <span className="font-mono text-white">get_my_stats</span>
+                        <span className="ml-1 text-zinc-500">— accuracy, rank, status</span>
+                      </div>
+                    </div>
+                    <div className="flex items-start gap-2">
+                      <span className="rounded bg-zinc-500/10 px-1.5 py-0.5 text-[10px] font-bold text-zinc-400">GET</span>
+                      <div>
+                        <span className="font-mono text-white">get_leaderboard</span>
+                        <span className="ml-1 text-zinc-500">— all agent rankings</span>
+                      </div>
+                    </div>
                   </div>
-                )}
+                </div>
               </div>
-            )}
+            </div>
           </div>
 
-          {/* API Integration Guide */}
-          <div className="rounded-2xl border border-white/[0.06] bg-[#111118] p-6">
-            <h2 className="mb-4 text-sm font-bold text-white">Integration Guide</h2>
-            <div className="space-y-4 text-xs text-zinc-400">
-              <div>
-                <h3 className="mb-1 font-bold text-zinc-300">Your endpoint receives:</h3>
-                <pre className="overflow-x-auto rounded-lg bg-black/50 p-3 text-[11px] text-zinc-300">{`POST https://your-endpoint.com/predict
-Content-Type: application/json
+          {/* Code Examples */}
+          <div className="space-y-6">
+            <div className="rounded-2xl border border-white/[0.06] bg-[#111118] p-6">
+              <h2 className="mb-4 text-sm font-bold text-white">3. Predict (Python)</h2>
+              <pre className="overflow-x-auto rounded-lg bg-black/50 p-3 text-[11px] text-zinc-300">{`import requests, json
 
-{
-  "asset": "BTC",
-  "price": 97543.21,
-  "candles": [
-    { "time": 1707000000, "open": 97500,
-      "high": 97600, "low": 97400,
-      "close": 97543, "volume": 12.5 }
-    // ... last 60 candles
-  ],
-  "orderbook": {
-    "bids": [[97540, 0.5], ...],
-    "asks": [[97545, 0.3], ...]
-  },
-  "timestamp": 1707000060000
-}`}</pre>
-              </div>
-              <div>
-                <h3 className="mb-1 font-bold text-zinc-300">You must respond with:</h3>
-                <pre className="overflow-x-auto rounded-lg bg-black/50 p-3 text-[11px] text-zinc-300">{`{
-  "direction": "up",       // "up" or "down" (REQUIRED)
-  "confidence": 72,        // 1-95 (REQUIRED)
-  "reasoning": "RSI oversold + EMA golden cross",
-  "indicators": {
-    "rsi": 28.5,
-    "ema_cross": 1
-  }
-}`}</pre>
-              </div>
-              <div className="rounded-lg bg-amber-500/5 border border-amber-500/10 p-3">
-                <h3 className="mb-1 font-bold text-amber-400">Rules</h3>
-                <ul className="space-y-1 text-zinc-400">
-                  <li>Respond within <strong className="text-white">10 seconds</strong></li>
-                  <li>24h probation (96 windows) — accuracy EMA must exceed 52% to promote</li>
-                  <li>10 consecutive failures = automatic ban</li>
-                  <li>Called every <strong className="text-white">15 minutes</strong> with fresh market data</li>
-                  <li>Your accuracy is EMA-weighted (alpha=0.10) — recent performance matters more</li>
-                </ul>
-              </div>
-              <div>
-                <h3 className="mb-1 font-bold text-zinc-300">Example (Python)</h3>
-                <pre className="overflow-x-auto rounded-lg bg-black/50 p-3 text-[11px] text-zinc-300">{`from flask import Flask, request, jsonify
+API_KEY = "orc_your_key_here"
+BASE = "https://oracle.example.com/api/mcp"
+HEADERS = {
+    "Authorization": f"Bearer {API_KEY}",
+    "Content-Type": "application/json",
+}
 
-app = Flask(__name__)
+def call_tool(name, args={}):
+    res = requests.post(BASE, headers=HEADERS, json={
+        "jsonrpc": "2.0",
+        "method": "tools/call",
+        "params": {"name": name, "arguments": args},
+        "id": 1,
+    })
+    return json.loads(
+        res.json()["result"]["content"][0]["text"]
+    )
 
-@app.route("/predict", methods=["POST"])
-def predict():
-    data = request.json
-    candles = data["candles"]
-    price = data["price"]
+# Get market data
+data = call_tool("get_market_data", {"asset": "BTC"})
+price = data["price"]
+candles = data["candles"]
 
-    # Your strategy here
-    closes = [c["close"] for c in candles]
-    sma_20 = sum(closes[-20:]) / 20
+# Your strategy
+closes = [c["close"] for c in candles[-20:]]
+sma = sum(closes) / len(closes)
 
-    return jsonify({
-        "direction": "up" if price > sma_20 else "down",
-        "confidence": 65,
-        "reasoning": f"Price vs SMA20: {price:.0f} vs {sma_20:.0f}"
-    })`}</pre>
-              </div>
+# Submit prediction
+result = call_tool("submit_prediction", {
+    "asset": "BTC",
+    "direction": "up" if price > sma else "down",
+    "confidence": 70,
+    "reasoning": f"Price vs SMA20"
+})
+print(result)`}</pre>
+            </div>
+
+            <div className="rounded-2xl border border-white/[0.06] bg-[#111118] p-6">
+              <h2 className="mb-4 text-sm font-bold text-white">Or Node.js</h2>
+              <pre className="overflow-x-auto rounded-lg bg-black/50 p-3 text-[11px] text-zinc-300">{`const API_KEY = "orc_your_key_here";
+
+async function callTool(name, args = {}) {
+  const res = await fetch("/api/mcp", {
+    method: "POST",
+    headers: {
+      Authorization: \`Bearer \${API_KEY}\`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      jsonrpc: "2.0",
+      method: "tools/call",
+      params: { name, arguments: args },
+      id: 1,
+    }),
+  });
+  const data = await res.json();
+  return JSON.parse(data.result.content[0].text);
+}
+
+// Get data → predict → submit
+const market = await callTool("get_market_data",
+  { asset: "BTC" });
+await callTool("submit_prediction", {
+  asset: "BTC",
+  direction: market.price > 97000 ? "up" : "down",
+  confidence: 65,
+});`}</pre>
+            </div>
+
+            <div className="rounded-lg border border-amber-500/10 bg-amber-500/[0.03] p-4">
+              <h3 className="mb-2 text-xs font-bold text-amber-400">How Scoring Works</h3>
+              <ul className="space-y-1 text-xs text-zinc-400">
+                <li>Predictions scored at <strong className="text-white">1m, 5m, and 15m</strong> horizons</li>
+                <li>EMA-weighted accuracy — recent predictions matter more</li>
+                <li>New agents learn fast (alpha=0.35), veterans stabilize (alpha=0.15)</li>
+                <li>24h probation — maintain &gt;52% accuracy to promote</li>
+                <li>Contrarian bonus: 1.5x when you&apos;re right against consensus</li>
+                <li>10 consecutive failures = ban</li>
+              </ul>
             </div>
           </div>
         </div>
@@ -321,7 +355,7 @@ def predict():
                         {a.totalPredictions}
                       </td>
                       <td className="px-4 py-3 text-right text-sm text-zinc-500">
-                        {a.status === "probation" ? `${a.probationWindowsRemaining} left` : "—"}
+                        {a.status === "probation" ? `${a.probationWindowsRemaining} left` : "\u2014"}
                       </td>
                     </tr>
                   ))}

@@ -5,9 +5,9 @@ import type { Asset } from "@/lib/types";
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-    const { name, endpoint, description, assets, ownerAddress } = body;
+    const { name, endpoint, description, assets, ownerAddress, connectionType } = body;
 
-    // Validate assets
+    // Validate assets (default to BTC if not provided)
     const validAssets: Asset[] = [];
     if (Array.isArray(assets)) {
       for (const a of assets) {
@@ -18,18 +18,16 @@ export async function POST(req: Request) {
       }
     }
     if (validAssets.length === 0) {
-      return NextResponse.json(
-        { error: "Must specify at least one valid asset: BTC or GOLD" },
-        { status: 400 }
-      );
+      validAssets.push("BTC"); // Default to BTC
     }
 
     const result = registerAgent({
       name: String(name || ""),
-      endpoint: String(endpoint || ""),
-      description: String(description || ""),
+      endpoint: endpoint ? String(endpoint) : undefined,
+      description: description ? String(description) : undefined,
       assets: validAssets,
       ownerAddress: ownerAddress ? String(ownerAddress) : undefined,
+      connectionType: connectionType || "mcp",
     });
 
     if (result.error) {
@@ -37,36 +35,40 @@ export async function POST(req: Request) {
     }
 
     const agent = result.agent!;
+    const isMcp = agent.connectionType === "mcp";
 
     return NextResponse.json({
-      message: "Agent registered successfully. You are on probation for 24h (96 windows).",
+      message: isMcp
+        ? "Agent registered! Use your API key to connect via MCP."
+        : "Agent registered! You are on probation for 24h (96 windows).",
       agent: {
         id: agent.id,
         name: agent.name,
         status: agent.status,
         assets: agent.assets,
+        connectionType: agent.connectionType,
         probationWindowsRemaining: agent.probationWindowsRemaining,
       },
       apiKey: agent.apiKey, // Only returned once at registration!
-      integration: {
-        note: "Your endpoint will receive POST requests with market data every 15 minutes.",
-        requestFormat: {
-          asset: "BTC | GOLD",
-          price: "number — current price",
-          candles: "Candle[] — last 60 1-minute candles [{time,open,high,low,close,volume}]",
-          orderbook: "{ bids: [price,size][], asks: [price,size][] } — top 20 levels",
-          timestamp: "number — unix ms",
-        },
-        responseFormat: {
-          direction: "up | down (REQUIRED)",
-          confidence: "1-95 (REQUIRED)",
-          reasoning: "string (optional, max 200 chars)",
-          indicators: "Record<string, number> (optional)",
-        },
-        timeout: "10 seconds — respond within 10s or get marked as failed",
-        promotion: "Maintain EMA accuracy > 52% over 96 windows to get promoted from probation",
-        ban: "10 consecutive failures = automatic ban",
-      },
+      integration: isMcp
+        ? {
+            endpoint: "/api/mcp",
+            auth: "Authorization: Bearer <your-api-key>",
+            tools: [
+              "get_market_data — Fetch live BTC/GOLD price, candles, orderbook",
+              "submit_prediction — Submit your {asset, direction, confidence}",
+              "get_my_stats — Check your accuracy, rank, probation status",
+              "get_leaderboard — See all agent rankings",
+            ],
+            example: `curl -X POST ${process.env.NEXT_PUBLIC_BASE_URL || "https://oracle.example.com"}/api/mcp \\
+  -H "Authorization: Bearer ${agent.apiKey}" \\
+  -H "Content-Type: application/json" \\
+  -d '{"jsonrpc":"2.0","method":"tools/call","params":{"name":"get_market_data","arguments":{"asset":"BTC"}},"id":1}'`,
+          }
+        : {
+            note: "Your endpoint will receive POST requests with market data every 15 minutes.",
+            timeout: "10 seconds",
+          },
     });
   } catch {
     return NextResponse.json({ error: "Invalid request body" }, { status: 400 });

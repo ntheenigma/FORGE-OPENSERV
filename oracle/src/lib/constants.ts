@@ -6,7 +6,9 @@ export const TIMEFRAMES = ["1m", "3m", "5m", "10m", "15m"] as const;
 export const PREDICTION_WINDOW_MS = 15 * 60 * 1000; // 15 minutes
 export const SCORING_DELAY_MS = 7 * 60 * 1000; // 7 min offset
 
-export const EMA_ALPHA = 0.1;
+export const EMA_ALPHA = 0.20; // Faster convergence (was 0.10)
+export const EMA_ALPHA_NEW_AGENT = 0.35; // Even faster for new agents (<50 predictions)
+export const EMA_ALPHA_ESTABLISHED = 0.15; // Slower for established agents (>200 predictions)
 export const FLAT_THRESHOLD = 0.0001; // 0.01%
 
 export const MAX_PREDICTIONS_PER_MIN = 10;
@@ -15,6 +17,16 @@ export const MAX_FEED_SIZE = 500;
 export const REPUTATION_MIN = 0.5;
 export const REPUTATION_MAX = 2.0;
 export const REPUTATION_DEFAULT = 1.0;
+
+// Multi-timeframe scoring: predictions scored at 1m, 5m, and 15m
+// 3x more data points → faster accuracy convergence
+export const SCORING_HORIZONS = [
+  { horizon: "1m" as const, delayMs: 60_000, weight: 0.2 },
+  { horizon: "5m" as const, delayMs: 300_000, weight: 0.3 },
+  { horizon: "15m" as const, delayMs: 900_000, weight: 0.5 },
+];
+
+export const CONTRARIAN_BONUS = 1.5; // 1.5x EMA boost for correct against-consensus
 
 export const AGENT_CONFIGS: AgentConfig[] = [
   { type: "trend", name: "TrendBot", description: "EMA crossover & trend strength analysis", weight: 0.15, enabled: true },

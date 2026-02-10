@@ -78,14 +78,16 @@ export interface AgentConfig {
 // ── External Agent Registration ──
 
 export type ExternalAgentStatus = "active" | "probation" | "inactive" | "banned";
+export type AgentConnectionType = "mcp" | "http";
 
 export interface RegisteredAgent {
   id: string;
   name: string;
-  endpoint: string; // HTTPS URL — receives POST with market data
+  endpoint?: string; // Optional — only for HTTP-push agents
   description: string;
   ownerAddress?: string;
   type: "core" | "external";
+  connectionType: AgentConnectionType; // "mcp" = agent pulls data, "http" = we push
   status: ExternalAgentStatus;
   assets: Asset[]; // which assets this agent predicts
   registeredAt: number;
@@ -99,22 +101,38 @@ export interface RegisteredAgent {
 }
 
 /**
- * POST body sent TO external agents:
- * {
- *   asset: "BTC" | "GOLD",
- *   price: number,
- *   candles: Candle[] (last 60),
- *   orderbook: { bids, asks },
- *   timestamp: number
- * }
+ * External agents can connect two ways:
  *
- * External agents MUST respond with this JSON within 10 seconds:
+ * 1. MCP (recommended) — Agent connects to POST /api/mcp with API key
+ *    and calls tools: get_market_data, submit_prediction, get_my_stats
+ *
+ * 2. HTTP Push — Agent runs an endpoint, we POST market data to it
+ *    (legacy, still supported but not recommended)
  */
 export interface ExternalPredictionResponse {
   direction: Direction;
   confidence: number; // 1-95
   reasoning?: string;
   indicators?: Record<string, number>;
+}
+
+// ── Multi-Timeframe Scoring ──
+
+export type ScoringHorizon = "1m" | "5m" | "15m";
+
+export interface PendingResolution {
+  predictionId: string;
+  agentId: string; // "core:trend" or "ext:agent-id" or "human:userId"
+  asset: Asset;
+  direction: Direction;
+  priceAtPrediction: number;
+  timestamp: number;
+  horizons: {
+    horizon: ScoringHorizon;
+    resolveAt: number; // unix ms
+    resolved: boolean;
+    correct?: boolean;
+  }[];
 }
 
 // ── Consensus ──

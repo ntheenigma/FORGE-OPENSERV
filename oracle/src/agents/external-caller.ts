@@ -23,7 +23,7 @@ async function callExternalAgent(
       timestamp: snapshot.timestamp,
     };
 
-    const res = await fetch(agent.endpoint, {
+    const res = await fetch(agent.endpoint!, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -78,13 +78,16 @@ export async function callExternalAgents(
   asset: Asset,
   snapshot: MarketSnapshot
 ): Promise<AgentSignal[]> {
-  const agents = getActiveExternalAgents(asset);
+  // Only call HTTP-push agents — MCP agents submit their own predictions
+  const agents = getActiveExternalAgents(asset).filter(
+    (a) => a.connectionType === "http" && a.endpoint
+  );
 
   if (agents.length === 0) {
     return [];
   }
 
-  console.log(`[ORACLE] Calling ${agents.length} external agents for ${asset}...`);
+  console.log(`[ORACLE] Calling ${agents.length} HTTP agents for ${asset}...`);
 
   const results = await Promise.allSettled(
     agents.map((agent) => callExternalAgent(agent, asset, snapshot))

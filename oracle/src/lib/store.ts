@@ -1,5 +1,6 @@
 import type {
   Asset,
+  Direction,
   Prediction,
   AgentSignal,
   ConsensusResult,
@@ -8,13 +9,19 @@ import type {
   Candle,
   LeaderboardEntry,
   RegisteredAgent,
+  PendingResolution,
 } from "./types";
 import {
   EMA_ALPHA,
+  EMA_ALPHA_NEW_AGENT,
+  EMA_ALPHA_ESTABLISHED,
   REPUTATION_MIN,
   REPUTATION_MAX,
   REPUTATION_DEFAULT,
   MAX_FEED_SIZE,
+  SCORING_HORIZONS,
+  FLAT_THRESHOLD,
+  CONTRARIAN_BONUS,
 } from "./constants";
 
 // ── In-memory stores (persist to JSON on Railway) ──
@@ -156,10 +163,19 @@ export function getLeaderboard(limit = 50): LeaderboardEntry[] {
 
 // ── Agent Accuracy ──
 
-function updateAgentAccuracy(agentType: string, correct: boolean): void {
+function getAdaptiveAlpha(agentType: string): number {
+  const total = predictions.filter((p) => p.agentType === agentType).length;
+  if (total < 50) return EMA_ALPHA_NEW_AGENT; // Fast learning for new agents
+  if (total > 200) return EMA_ALPHA_ESTABLISHED; // Stable for veterans
+  return EMA_ALPHA; // Default
+}
+
+function updateAgentAccuracy(agentType: string, correct: boolean, bonus = 1.0): void {
+  const alpha = getAdaptiveAlpha(agentType) * bonus;
+  const clampedAlpha = Math.min(alpha, 0.5); // Never exceed 0.5
   const old = agentAccuracy[agentType] ?? 0.5;
   agentAccuracy[agentType] = Number(
-    (EMA_ALPHA * (correct ? 1.0 : 0.0) + (1 - EMA_ALPHA) * old).toFixed(4)
+    (clampedAlpha * (correct ? 1.0 : 0.0) + (1 - clampedAlpha) * old).toFixed(4)
   );
 }
 
@@ -264,38 +280,39 @@ function generateApiKey(): string {
 
 export function registerAgent(opts: {
   name: string;
-  endpoint: string;
-  description: string;
-  assets: Asset[];
+  endpoint?: string; // Optional — only for HTTP-push agents
+  description?: string;
+  assets?: Asset[];
   ownerAddress?: string;
+  connectionType?: "mcp" | "http";
 }): { agent: RegisteredAgent; error?: never } | { agent?: never; error: string } {
   // Validate
   if (!opts.name || opts.name.length < 2 || opts.name.length > 40) {
     return { error: "Name must be 2-40 characters" };
   }
-  if (!opts.endpoint || !opts.endpoint.startsWith("http")) {
-    return { error: "Endpoint must be a valid HTTP(S) URL" };
+  const connType = opts.connectionType || (opts.endpoint ? "http" : "mcp");
+  if (connType === "http" && (!opts.endpoint || !opts.endpoint.startsWith("http"))) {
+    return { error: "HTTP agents must provide a valid endpoint URL" };
   }
-  if (!opts.assets || opts.assets.length === 0) {
-    return { error: "Must specify at least one asset (BTC, GOLD)" };
-  }
+  const assets: Asset[] = opts.assets && opts.assets.length > 0 ? opts.assets : ["BTC"];
   if (agentPool.filter((a) => a.type === "external").length >= MAX_EXTERNAL_AGENTS) {
     return { error: `Max ${MAX_EXTERNAL_AGENTS} external agents reached` };
   }
-  // Check duplicate endpoint
-  if (agentPool.some((a) => a.endpoint === opts.endpoint && a.status !== "banned")) {
-    return { error: "An agent with this endpoint is already registered" };
+  // Check duplicate name (case-insensitive)
+  if (agentPool.some((a) => a.name.toLowerCase() === opts.name.toLowerCase() && a.status !== "banned")) {
+    return { error: "An agent with this name already exists" };
   }
 
   const agent: RegisteredAgent = {
     id: `ext-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
     name: opts.name,
     endpoint: opts.endpoint,
-    description: opts.description.slice(0, 200),
+    description: (opts.description || "").slice(0, 200),
     ownerAddress: opts.ownerAddress,
     type: "external",
+    connectionType: connType,
     status: "probation",
-    assets: opts.assets,
+    assets,
     registeredAt: Date.now(),
     probationWindowsRemaining: PROBATION_WINDOWS,
     totalPredictions: 0,
@@ -314,12 +331,60 @@ export function registerAgent(opts: {
   addFeedItem({
     id: `feed-${Date.now()}-reg`,
     type: "agent_signal",
-    asset: opts.assets[0],
-    message: `New agent registered: ${agent.name} (${opts.assets.join(", ")}) — on probation for 24h`,
+    asset: assets[0],
+    message: `New agent registered: ${agent.name} (${assets.join(", ")}) via ${connType.toUpperCase()}`,
     timestamp: Date.now(),
   });
 
   return { agent };
+}
+
+// ── MCP Agent Lookup ──
+
+export function getAgentByApiKey(apiKey: string): RegisteredAgent | null {
+  return agentPool.find((a) => a.apiKey === apiKey && a.status !== "banned") ?? null;
+}
+
+// ── MCP Prediction Submission ──
+
+export function submitAgentPrediction(
+  agentId: string,
+  asset: Asset,
+  direction: Direction,
+  confidence: number,
+  reasoning?: string,
+): { success: boolean; predictionId: string; error?: string } {
+  const agent = agentPool.find((a) => a.id === agentId);
+  if (!agent) return { success: false, predictionId: "", error: "Agent not found" };
+  if (agent.status === "banned") return { success: false, predictionId: "", error: "Agent is banned" };
+  if (!agent.assets.includes(asset)) return { success: false, predictionId: "", error: `Agent not registered for ${asset}` };
+
+  const clampedConfidence = Math.max(1, Math.min(95, confidence));
+  const predictionId = `pred-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+
+  const prediction: Prediction = {
+    id: predictionId,
+    asset,
+    userId: agentId,
+    direction,
+    confidence: clampedConfidence,
+    reasoning: reasoning?.slice(0, 200),
+    timestamp: Date.now(),
+    source: "agent",
+    agentType: `ext:${agentId}`,
+  };
+
+  addPrediction(prediction);
+  agent.lastSeen = Date.now();
+  agent.consecutiveFailures = 0; // Reset on successful submission
+
+  // Queue for multi-timeframe resolution
+  const currentPrice = getLatestPrice(asset)?.price;
+  if (currentPrice) {
+    queueMultiTimeframeResolution(predictionId, `ext:${agentId}`, asset, direction, currentPrice);
+  }
+
+  return { success: true, predictionId };
 }
 
 export function getAgentPool(): RegisteredAgent[] {
@@ -346,7 +411,8 @@ export function validateAgentApiKey(id: string, apiKey: string): boolean {
 
 export function updateExternalAgentStats(
   agentId: string,
-  correct: boolean
+  correct: boolean,
+  bonus = 1.0
 ): void {
   const agent = agentPool.find((a) => a.id === agentId);
   if (!agent) return;
@@ -358,10 +424,12 @@ export function updateExternalAgentStats(
   }
   agent.lastSeen = Date.now();
 
-  // EMA update
+  // Adaptive EMA update
   const key = `ext:${agentId}`;
+  const alpha = getAdaptiveAlpha(key) * bonus;
+  const clampedAlpha = Math.min(alpha, 0.5);
   const old = agentAccuracy[key] ?? 0.5;
-  const newEma = EMA_ALPHA * (correct ? 1.0 : 0.0) + (1 - EMA_ALPHA) * old;
+  const newEma = clampedAlpha * (correct ? 1.0 : 0.0) + (1 - clampedAlpha) * old;
   agentAccuracy[key] = Number(newEma.toFixed(4));
   agent.accuracyEma = agentAccuracy[key];
 
@@ -369,7 +437,6 @@ export function updateExternalAgentStats(
   if (agent.status === "probation") {
     agent.probationWindowsRemaining--;
     if (agent.probationWindowsRemaining <= 0) {
-      // Promote if EMA > 0.52, demote otherwise
       agent.status = agent.accuracyEma > 0.52 ? "active" : "inactive";
       console.log(
         `[ORACLE] Agent ${agent.name} ${agent.status === "active" ? "PROMOTED" : "DEMOTED"} (EMA: ${agent.accuracyEma})`
@@ -426,4 +493,98 @@ export function getAgentLeaderboard(): {
     }));
 
   return [...coreEntries, ...extEntries].sort((a, b) => b.accuracy - a.accuracy);
+}
+
+// ── Multi-Timeframe Scoring Queue ──
+
+let pendingResolutions: PendingResolution[] = [];
+
+export function queueMultiTimeframeResolution(
+  predictionId: string,
+  agentId: string,
+  asset: Asset,
+  direction: Direction,
+  priceAtPrediction: number,
+): void {
+  const now = Date.now();
+  pendingResolutions.push({
+    predictionId,
+    agentId,
+    asset,
+    direction,
+    priceAtPrediction,
+    timestamp: now,
+    horizons: SCORING_HORIZONS.map((h) => ({
+      horizon: h.horizon,
+      resolveAt: now + h.delayMs,
+      resolved: false,
+    })),
+  });
+
+  // Keep queue bounded
+  if (pendingResolutions.length > 5000) {
+    pendingResolutions = pendingResolutions.slice(-3000);
+  }
+}
+
+export function resolveMultiTimeframe(): number {
+  const now = Date.now();
+  let resolved = 0;
+
+  for (const pending of pendingResolutions) {
+    const currentPrice = getLatestPrice(pending.asset)?.price;
+    if (!currentPrice) continue;
+
+    // Get current consensus direction for contrarian bonus
+    const consensus = latestConsensus[pending.asset];
+    const consensusDirection = consensus?.direction;
+
+    for (const horizon of pending.horizons) {
+      if (horizon.resolved || now < horizon.resolveAt) continue;
+
+      const change = (currentPrice - pending.priceAtPrediction) / pending.priceAtPrediction;
+      const aboveThreshold = Math.abs(change) > FLAT_THRESHOLD;
+      const priceWentUp = change > 0;
+
+      // Correct if direction matches price movement (or flat = always correct)
+      const correct = !aboveThreshold || (pending.direction === "up" ? priceWentUp : !priceWentUp);
+
+      horizon.resolved = true;
+      horizon.correct = correct;
+      resolved++;
+
+      // Contrarian bonus: agent disagreed with consensus but was correct
+      const isContrarian =
+        consensusDirection &&
+        consensusDirection !== "neutral" &&
+        pending.direction !== consensusDirection;
+      const bonus = correct && isContrarian ? CONTRARIAN_BONUS : 1.0;
+
+      // Weighted EMA update based on horizon
+      const horizonConfig = SCORING_HORIZONS.find((h) => h.horizon === horizon.horizon);
+      const horizonWeight = horizonConfig?.weight ?? 0.33;
+
+      // Update agent accuracy with horizon weight as a partial update
+      if (pending.agentId.startsWith("ext:")) {
+        const extId = pending.agentId.replace("ext:", "");
+        updateExternalAgentStats(extId, correct, bonus * horizonWeight);
+      } else {
+        updateAgentAccuracy(pending.agentId, correct, bonus * horizonWeight);
+      }
+    }
+  }
+
+  // Clean up fully resolved entries
+  pendingResolutions = pendingResolutions.filter(
+    (p) => p.horizons.some((h) => !h.resolved)
+  );
+
+  return resolved;
+}
+
+export function getPendingResolutionCount(): number {
+  return pendingResolutions.reduce(
+    (acc, p) => acc + p.horizons.filter((h) => !h.resolved).length,
+    0
+  );
 }

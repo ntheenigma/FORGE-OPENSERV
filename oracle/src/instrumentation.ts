@@ -24,6 +24,19 @@ export async function register() {
       }
     });
 
-    console.log("[ORACLE] Cron jobs registered: BTC (*/15), GOLD (2,17,32,47)");
+    // Multi-timeframe scoring: resolve 1m/5m/15m predictions every minute
+    cron.default.schedule("* * * * *", async () => {
+      try {
+        const { resolveMultiTimeframe } = await import("@/lib/store");
+        const resolved = resolveMultiTimeframe();
+        if (resolved > 0) {
+          console.log(`[ORACLE] Multi-timeframe: resolved ${resolved} horizon checks`);
+        }
+      } catch (e) {
+        console.error("[ORACLE] Multi-timeframe scoring failed:", e);
+      }
+    });
+
+    console.log("[ORACLE] Cron jobs registered: BTC (*/15), GOLD (2,17,32,47), Scoring (*/1)");
   }
 }
